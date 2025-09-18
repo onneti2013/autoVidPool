@@ -876,7 +876,29 @@ await renderer.exportVideo(async (finalVideoUrl) => {
 
 window.generateVideoForPuppeteer = async function() {
     try {
-        const scriptText = 'Olá, tudo bem? Como está? Bom dia!';
+        
+
+        // ADICIONE ESTE BLOCO NO LUGAR DA LINHA REMOVIDA:
+        const scriptPrompt = `Crie um roteiro de narração curto e envolvente para um vídeo vertical sobre o tema: "${THEME}". O texto deve ser fluido e natural, dividido em 3 parágrafos curtos. Responda apenas com o texto do roteiro.`;
+        
+        const scriptPayload = {
+            contents: [{ parts: [{ text: scriptPrompt }] }],
+            generationConfig: { temperature: 0.7 }
+        };
+        
+        const scriptResult = await callGeminiApi(GEMINI_TEXT_API_URL, scriptPayload);
+        
+        const scriptPromptRevise = `Verifique o texto se existe qualquer orientação de como vai ser o video como (Música...), (Cena...), (Narrador...) ou instruções, caso exista remova qualquer instrução e me traga apenas o roteiro limpo, segue o roteiro a seguir, também não quero informações sua duzendo que trouxe o roteiro quero apenas o texto do roteiro não seja teimoso apenas o texto do roteiro: "${scriptResult.candidates[0].content.parts[0].text.trim()}".`;
+        
+        const scriptRevisePayload = {
+            contents: [{ parts: [{ text: scriptPromptRevise }] }],
+            generationConfig: { temperature: 0.7 }
+        };
+        
+        const reviseScript = await callGeminiApi(GEMINI_TEXT_API_URL, scriptRevisePayload);
+        
+        const scriptText = reviseScript.candidates[0].content.parts[0].text.trim();
+      
         const audioBlob = await generateAudio(scriptText);
         const transcriptionResult = await transcribeAudio(audioBlob);
         const timedChunks = groupTranscriptionIntoTimedChunks(transcriptionResult.segments);
