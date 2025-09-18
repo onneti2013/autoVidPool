@@ -574,9 +574,11 @@ window.WordSubtitleAnimator = WordSubtitleAnimator;
 </div>
 
   <script>
-    const THEME = "Curiosidades sobre o MAR"; 
-    const GEMINI_API_KEY = "AIzaSyDgzLM_b_BtOsZ0UAP12nOOl5Y2uMS5EHo";
-    const GROQ_API_KEY = "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";
+
+    const THEME = window.THEME || "Curiosidades sobre o MAR";
+    const GEMINI_API_KEY = window.GEMINI_API_KEY;
+    const GROQ_API_KEY = window.GROQ_API_KEY;
+
     const GEMINI_TEXT_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
     const GEMINI_AUDIO_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${GEMINI_API_KEY}`;
     const GEMINI_IMAGE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${GEMINI_API_KEY}`;
@@ -601,27 +603,26 @@ window.WordSubtitleAnimator = WordSubtitleAnimator;
 
         try {
             
-            // const scriptPrompt = `Crie um roteiro de narração curto e envolvente para um vídeo vertical sobre o tema: "${THEME}". O texto deve ser fluido e natural, dividido em 3 parágrafos curtos. Responda apenas com o texto do roteiro.`;
+            const scriptPrompt = `Crie um roteiro de narração curto e envolvente para um vídeo vertical sobre o tema: "${THEME}". O texto deve ser fluido e natural, dividido em 3 parágrafos curtos. Responda apenas com o texto do roteiro.`;
             
-            // const scriptPayload = {
-            //     contents: [{ parts: [{ text: scriptPrompt }] }],
-            //     generationConfig: { temperature: 0.7 }
-            // };
+            const scriptPayload = {
+                contents: [{ parts: [{ text: scriptPrompt }] }],
+                generationConfig: { temperature: 0.7 }
+            };
 
-            // const scriptResult = await callGeminiApi(GEMINI_TEXT_API_URL, scriptPayload);
+            const scriptResult = await callGeminiApi(GEMINI_TEXT_API_URL, scriptPayload);
 
-            // const scriptPromptRevise = `Verifique o texto se existe qualquer orientação de como vai ser o video como (Música...), (Cena...), (Narrador...) ou instruções, caso exista remova qualquer instrução e me traga apenas o roteiro limpo, segue o roteiro a seguir, também não quero informações sua duzendo que trouxe o roteiro quero apenas o texto do roteiro não seja teimoso apenas o texto do roteiro: "${scriptResult.candidates[0].content.parts[0].text.trim()}".`;
+            const scriptPromptRevise = `Verifique o texto se existe qualquer orientação de como vai ser o video como (Música...), (Cena...), (Narrador...) ou instruções, caso exista remova qualquer instrução e me traga apenas o roteiro limpo, segue o roteiro a seguir, também não quero informações sua duzendo que trouxe o roteiro quero apenas o texto do roteiro não seja teimoso apenas o texto do roteiro: "${scriptResult.candidates[0].content.parts[0].text.trim()}".`;
 
-            // const scriptRevisePayload = {
-            //     contents: [{ parts: [{ text: scriptPromptRevise }] }],
-            //     generationConfig: { temperature: 0.7 }
-            // };
+            const scriptRevisePayload = {
+                contents: [{ parts: [{ text: scriptPromptRevise }] }],
+                generationConfig: { temperature: 0.7 }
+            };
 
-            // const reviseScript = await callGeminiApi(GEMINI_TEXT_API_URL, scriptRevisePayload);
+            const reviseScript = await callGeminiApi(GEMINI_TEXT_API_URL, scriptRevisePayload);
 
-            // const scriptText = reviseScript.candidates[0].content.parts[0].text.trim();
+            const scriptText = reviseScript.candidates[0].content.parts[0].text.trim();
             
-            const scriptText = 'Olá, tudo bem ? como está ? Bom dia!';
             const audioBlob = await generateAudio(scriptText);
 
             const transcriptionResult = await transcribeAudio(audioBlob);
