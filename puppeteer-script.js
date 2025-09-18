@@ -5,6 +5,17 @@ const path = require('path');
 async function generateVideo() {
     console.log('Iniciando geração de vídeo...');
     
+    // Pega as variáveis de ambiente
+    const theme = process.env.THEME || 'Curiosidades sobre o MAR';
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY;
+    
+    console.log(`Tema recebido: ${theme}`);
+    
+    if (!geminiKey || !groqKey) {
+        throw new Error('Chaves de API não encontradas nas variáveis de ambiente');
+    }
+    
     const browser = await puppeteer.launch({
         headless: true,
         args: [
@@ -21,6 +32,13 @@ async function generateVideo() {
         // Carregar o HTML
         const htmlPath = path.join(__dirname, 'index.html');
         await page.goto(`file://${htmlPath}`, { waitUntil: 'networkidle0' });
+
+        // Passar as variáveis para a página
+        await page.evaluate((theme, geminiKey, groqKey) => {
+            window.THEME = theme;
+            window.GEMINI_API_KEY = geminiKey;
+            window.GROQ_API_KEY = groqKey;
+        }, theme, geminiKey, groqKey);
 
         // Aguardar que a página esteja pronta
         await page.waitForFunction('window.pageReady === true', { timeout: 30000 });
