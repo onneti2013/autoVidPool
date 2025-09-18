@@ -1,7 +1,15 @@
 name: Generate Video
 
 on:
-  workflow_dispatch: # Permite executar manualmente
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: 'Tema do vídeo'
+        required: true
+        default: 'Curiosidades sobre o MAR'
+        type: string
+  repository_dispatch:
+    types: [generate-video]
 
 jobs:
   generate-video:
@@ -26,6 +34,10 @@ jobs:
         sudo apt-get install -y ffmpeg
 
     - name: Generate video
+      env:
+        THEME: ${{ github.event.inputs.theme || github.event.client_payload.theme || 'Curiosidades sobre o MAR' }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       run: |
         xvfb-run -a node puppeteer-script.js
 
