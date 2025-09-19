@@ -1,3 +1,5 @@
+# .github/workflows/generate-video.yml
+
 name: Generate Video
 
 on:
@@ -25,7 +27,8 @@ jobs:
         node-version: '18'
 
     - name: Install dependencies
-      run: npm install puppeteer # Seu package.json já cuida disso
+      # MUDANÇA AQUI: 'npm install' vai ler o package.json e instalar tudo
+      run: npm install
 
     - name: Install system tools
       run: |
@@ -38,13 +41,10 @@ jobs:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       run: |
-        # xvfb-run ainda é uma boa prática
         xvfb-run -a node puppeteer-script.js
-
-    # REMOVIDO: O passo 'Combine video and audio' foi integrado ao script principal.
 
     - name: Upload result
       uses: actions/upload-artifact@v4
       with:
         name: generated-video
-        path: output/final-video.mp4 # Agora sobe apenas o vídeo final
+        path: output/final-video.mp4
