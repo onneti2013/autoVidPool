@@ -15,14 +15,25 @@ async function generateVideo() {
     
     const browser = await puppeteer.launch({
         headless: 'new',
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            // ================== A CORREÇÃO ESTÁ AQUI ==================
+            // Permite que o arquivo local (file://) faça requisições de rede (fetch).
+            '--allow-file-access-from-files' 
+            // ==========================================================
+        ]
     });
 
     try {
         const page = await browser.newPage();
-        await page.setViewport({ width: 1200, height: 800 }); // Viewport pode ser qualquer tamanho, não afeta o canvas
+        
+        // Adiciona um listener para logs do console da página, ajuda a depurar
+        page.on('console', msg => console.log('LOG DO NAVEGADOR:', msg.text()));
 
-        // Injeta as chaves de API
+        await page.setViewport({ width: 1200, height: 800 });
+
         await page.evaluateOnNewDocument((theme, geminiKey, groqKey) => {
             window.THEME = theme;
             window.GEMINI_API_KEY = geminiKey;
@@ -35,10 +46,11 @@ async function generateVideo() {
         await page.waitForFunction('window.pageReady === true');
         console.log('Página carregada, preparando assets...');
 
-        // ETAPA 1: Chamar a inicialização para gerar assets e obter duração
+        // ETAPA 1: Chamar a inicialização
+        // Aumentando o timeout aqui, pois a geração de assets pode ser demorada.
         const initResult = await page.evaluate(async () => {
             return await window.initializeGenerator();
-        });
+        }, { timeout: 300000 }); // Timeout de 5 minutos (300.000 ms)
 
         if (!initResult.success) {
             throw new Error('Falha na inicialização: ' + initResult.error);
@@ -52,7 +64,7 @@ async function generateVideo() {
         fs.writeFileSync(path.join(outputDir, 'audio.wav'), audioBuffer);
         console.log(`Áudio salvo. Duração: ${audioDuration.toFixed(2)}s`);
 
-        // ETAPA 2: Loop de renderização quadro a quadro
+        // ETAPA 2: Loop de renderização
         const FPS = 30;
         const totalFrames = Math.floor(audioDuration * FPS);
         const framesDir = path.join(outputDir, 'frames');
@@ -81,7 +93,6 @@ async function compileVideo() {
     const outputPath = path.join(outputDir, 'final-video.mp4');
     const FPS = 30;
     
-    // Comando FFmpeg para juntar frames PNG e áudio WAV
     const ffmpegCommand = `ffmpeg -framerate ${FPS} -i "${path.join(framesDir, 'frame_%05d.png')}" -i "${path.join(outputDir, 'audio.wav')}" -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "${outputPath}"`;
 
     await new Promise((resolve, reject) => {
