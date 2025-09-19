@@ -1,4 +1,4 @@
-name: Generate Video
+name: Generate Video OLD
 
 on:
   workflow_dispatch:
