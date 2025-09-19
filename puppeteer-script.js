@@ -1,9 +1,26 @@
 const puppeteer = require('puppeteer');
+const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 
-async function generateVideo() {
+// Variáveis globais para o servidor
+let server;
+
+async function startServer() {
+    const app = express();
+    // Serve todos os arquivos do diretório atual (index.html, etc)
+    app.use(express.static(__dirname)); 
+    
+    return new Promise(resolve => {
+        server = app.listen(0, () => { // "0" encontra uma porta livre aleatória
+            console.log(`Servidor local iniciado na porta ${server.address().port}`);
+            resolve(server.address().port);
+        });
+    });
+}
+
+async function generateVideo(port) {
     console.log('Iniciando geração de vídeo...');
     const theme = process.env.THEME || 'Curiosidades sobre o MAR';
     const geminiKey = process.env.GEMINI_API_KEY;
@@ -19,17 +36,11 @@ async function generateVideo() {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            // ================== A CORREÇÃO ESTÁ AQUI ==================
-            // Permite que o arquivo local (file://) faça requisições de rede (fetch).
-            '--allow-file-access-from-files' 
-            // ==========================================================
         ]
     });
 
     try {
         const page = await browser.newPage();
-        
-        // Adiciona um listener para logs do console da página, ajuda a depurar
         page.on('console', msg => console.log('LOG DO NAVEGADOR:', msg.text()));
 
         await page.setViewport({ width: 1200, height: 800 });
@@ -40,17 +51,16 @@ async function generateVideo() {
             window.GROQ_API_KEY = groqKey;
         }, theme, geminiKey, groqKey);
 
-        const htmlPath = path.join(__dirname, 'index.html');
-        await page.goto(`file://${htmlPath}`, { waitUntil: 'networkidle0' });
+        const pageUrl = `http://localhost:${port}/index.html`;
+        console.log(`Navegando para ${pageUrl}`);
+        await page.goto(pageUrl, { waitUntil: 'networkidle0' });
 
         await page.waitForFunction('window.pageReady === true');
         console.log('Página carregada, preparando assets...');
 
-        // ETAPA 1: Chamar a inicialização
-        // Aumentando o timeout aqui, pois a geração de assets pode ser demorada.
         const initResult = await page.evaluate(async () => {
             return await window.initializeGenerator();
-        }, { timeout: 300000 }); // Timeout de 5 minutos (300.000 ms)
+        }, { timeout: 300000 });
 
         if (!initResult.success) {
             throw new Error('Falha na inicialização: ' + initResult.error);
@@ -64,7 +74,6 @@ async function generateVideo() {
         fs.writeFileSync(path.join(outputDir, 'audio.wav'), audioBuffer);
         console.log(`Áudio salvo. Duração: ${audioDuration.toFixed(2)}s`);
 
-        // ETAPA 2: Loop de renderização
         const FPS = 30;
         const totalFrames = Math.floor(audioDuration * FPS);
         const framesDir = path.join(outputDir, 'frames');
@@ -108,13 +117,21 @@ async function compileVideo() {
     console.log(`Vídeo final salvo em: ${outputPath}`);
 }
 
-generateVideo()
-    .then(compileVideo)
-    .then(() => {
+// Fluxo principal
+async function main() {
+    const port = await startServer();
+    try {
+        await generateVideo(port);
+        await compileVideo();
         console.log('Processo concluído com sucesso!');
-        process.exit(0);
-    })
-    .catch((error) => {
+    } catch (error) {
         console.error('Erro fatal no processo:', error);
         process.exit(1);
-    });
+    } finally {
+        if (server) {
+            server.close(() => console.log('Servidor local desligado.'));
+        }
+    }
+}
+
+main();
