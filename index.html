@@ -28,11 +28,10 @@ class CapCutStyleGenerator {
         this.transitionTypes = ['smoothSlideLeft', 'smoothSlideRight', 'smoothSlideUp', 'smoothSlideDown', 'zoomCrossfade', 'rotateZoom', 'scaleSlide', 'blurCrossfade', 'explosiveZoomIn', 'explosiveZoomOut', 'spiralBlur', 'waveSlide', 'liquidMorph', 'shatterTransition', 'windBlur', 'orbitalSlide', 'shearSlideLeft', 'shearSlideRight', 'shearSlideUp', 'shearSlideDown'];
         this.continuousAnimations = ['gentleDrift', 'smoothFloat', 'gentleSpin', 'breathingZoom', 'orbitalDrift', 'magneticPendulum', 'pulseWave', 'elasticFloat', 'focalDrift', 'hypnoticSpin', 'liquidBreathing', 'cosmicDrift', 'heartbeat', 'windSway', 'oceanWave'];
         this.subtitleAnimator = null;
-        this.transitionStates = {}; // Armazena o estado das transições para ser determinístico
+        this.transitionStates = {};
     }
 
     async init() {
-        // MUDANÇA CRÍTICA: autoStart: false e preserveDrawingBuffer: true
         this.app = new PIXI.Application({
             width: this.canvasWidth, height: this.canvasHeight, backgroundColor: 0x000000,
             antialias: true, resolution: 2, autoStart: false, preserveDrawingBuffer: true
@@ -50,7 +49,6 @@ class CapCutStyleGenerator {
         this.images = await this.loadImagesFromDataUrls(imageDataUrls);
     }
 
-    // NOVA FUNÇÃO MESTRA: Atualiza a cena para um tempo 't'
     updateScene(t) {
         const currentSubtitle = this.subtitles.find(sub => t >= sub.startTime && t <= sub.endTime);
 
@@ -70,7 +68,7 @@ class CapCutStyleGenerator {
             const timeIntoTransition = t - currentSubtitle.startTime;
             const isTransitioning = fromSubtitle && timeIntoTransition >= 0 && timeIntoTransition < this.transitionSpeed;
 
-            this.imageContainer.removeChildren(); // Limpa para redesenhar o estado correto
+            this.imageContainer.removeChildren();
 
             if (isTransitioning) {
                 const fromImage = this.images[imageIndex - 1];
@@ -113,7 +111,6 @@ class CapCutStyleGenerator {
         this.currentSprite.skew.set(values.skew.x, values.skew.y);
     }
     
-    // MÉTODOS MANTIDOS (sem alterações ou com pequenas adaptações)
     updateStatus(message) { const statusEl = document.getElementById('generation-status'); if (statusEl) statusEl.textContent = message; }
     async loadImagesFromDataUrls(dataUrls) { const images = []; for (let i = 0; i < dataUrls.length; i++) { try { const texture = await PIXI.Assets.load(dataUrls[i]); images.push({ texture, name: `image_${i}.jpg` }); this.updateStatus(`✅ Imagem ${i + 1}/${dataUrls.length}`); } catch (error) { throw new Error(`Erro ao carregar imagem ${i + 1}: ${error.message}`); } } return images; }
     parseSrtTime(timeStr) { const [time, ms] = timeStr.split(','); const [h, m, s] = time.split(':').map(Number); return h * 3600 + m * 60 + s + (parseInt(ms) / 1000); }
@@ -134,7 +131,6 @@ class CapCutStyleGenerator {
         }
         if (this.subtitles.length === 0) throw new Error('Nenhuma legenda válida encontrada.');
         
-        // Pré-calcula os tipos de transição para serem determinísticos
         this.subtitles.forEach((_, index) => {
             this.transitionStates[index] = this.transitionTypes[index % this.transitionTypes.length];
         });
@@ -168,19 +164,15 @@ class WordSubtitleAnimator {
         this.isInitialized = true;
     }
 
-    // NOVA FUNÇÃO MESTRA: Atualiza as legendas para um tempo 't'
     update(t) {
         if (!this.isInitialized || this.timeline.length === 0) return;
-
         let activeWord = this.timeline.find(wordData => t >= wordData.start && t < wordData.end);
-        
         this.wordElements.forEach(element => {
             if (activeWord && element.wordData.start === activeWord.start) {
                 const timeIntoWord = t - activeWord.start;
                 const duration = 0.3; 
                 const progress = Math.min(timeIntoWord / duration, 1);
                 const easeOutBack = 1 - Math.pow(1 - progress, 3);
-                
                 element.visible = true;
                 element.alpha = progress;
                 element.scale.set(1 + (easeOutBack * 0.1));
@@ -190,7 +182,6 @@ class WordSubtitleAnimator {
         });
     }
 
-    // MÉTODOS MANTIDOS (sem alterações)
     setupContainer() { if (this.container) { this.app.stage.removeChild(this.container); } this.container = new PIXI.Container(); this.container.name = 'subtitles-container'; this.container.x = this.app.screen.width / 2; this.container.y = this.app.screen.height - this.config.bottomMargin; this.app.stage.addChild(this.container); }
     setTimeline(data) { this.timeline = []; let words = data.words || (Array.isArray(data) ? data.flatMap(s => s.words || []) : []); words.forEach(wordData => { if(wordData && wordData.word) this.timeline.push({ word: wordData.word.trim(), start: wordData.start, end: wordData.end, duration: wordData.end - wordData.start }); }); if (this.timeline.length > 0) { this.createWordElements(); } }
     createWordElements() { this.container.removeChildren(); this.wordElements = []; this.timeline.forEach((wordData, index) => { const textElement = this.createWordElement(wordData, index); this.container.addChild(textElement); this.wordElements.push(textElement); }); }
@@ -199,14 +190,16 @@ class WordSubtitleAnimator {
 }
 
 // ===================================================================================
-// FUNÇÕES GLOBAIS E DE API (MANTIDAS DO SEU CÓDIGO ORIGINAL)
+// FUNÇÕES GLOBAIS E DE API (COM AS SUAS URLS ORIGINAIS RESTAURADAS)
 // ===================================================================================
 const THEME = window.THEME || "Curiosidades sobre o MAR";
 const GEMINI_API_KEY = window.GEMINI_API_KEY;
 const GROQ_API_KEY = window.GROQ_API_KEY;
-const GEMINI_TEXT_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-const GEMINI_AUDIO_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/text-to-speech:synthesizeSpeech?key=${GEMINI_API_KEY}`; // TTS API
-const GEMINI_IMAGE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/image-generation-model-001:generateImages?key=${GEMINI_API_KEY}`; // Image API
+
+// SUAS URLS ORIGINAIS E CORRETAS:
+const GEMINI_TEXT_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_AUDIO_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_IMAGE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${GEMINI_API_KEY}`;
 
 async function callGeminiApi(url, payload) {
     const response = await fetch(url, {
@@ -222,21 +215,30 @@ async function callGeminiApi(url, payload) {
 }
 
 async function generateScript() {
-    const scriptPrompt = `Crie um roteiro de narração curto e envolvente para um vídeo vertical sobre o tema: "${THEME}". O texto deve ser fluido e natural, dividido em 3 parágrafos curtos. Responda apenas com o texto do roteiro, sem nenhum tipo de formatação ou título.`;
+    const scriptPrompt = `Crie um roteiro de narração curto e envolvente para um vídeo vertical sobre o tema: "${THEME}". O texto deve ser fluido e natural, dividido em 3 parágrafos curtos. Responda apenas com o texto do roteiro.`;
     const scriptPayload = { contents: [{ parts: [{ text: scriptPrompt }] }], generationConfig: { temperature: 0.7 } };
     const scriptResult = await callGeminiApi(GEMINI_TEXT_API_URL, scriptPayload);
-    return scriptResult.candidates[0].content.parts[0].text.trim().replace(/(\r\n|\n|\r)/gm, " "); // Limpa quebras de linha
+    const scriptPromptRevise = `Verifique o texto se existe qualquer orientação de como vai ser o video como (Música...), (Cena...), (Narrador...) ou instruções, caso exista remova qualquer instrução e me traga apenas o roteiro limpo, segue o roteiro a seguir, também não quero informações sua duzendo que trouxe o roteiro quero apenas o texto do roteiro não seja teimoso apenas o texto do roteiro: "${scriptResult.candidates[0].content.parts[0].text.trim()}".`;
+    const scriptRevisePayload = { contents: [{ parts: [{ text: scriptPromptRevise }] }], generationConfig: { temperature: 0.7 } };
+    const reviseScript = await callGeminiApi(GEMINI_TEXT_API_URL, scriptRevisePayload);
+    return reviseScript.candidates[0].content.parts[0].text.trim();
 }
 
 async function generateAudio(text) {
-    // Nova API TTS do Gemini
     const payload = {
-        "input": { "text": text },
-        "voice": { "languageCode": "pt-BR", "name": "pt-BR-Standard-B" }, // Voz feminina
-        "audioConfig": { "audioEncoding": "LINEAR16", "sampleRateHertz": 24000 }
+        contents: [{ parts: [{ text: `Diga de forma natural e com pausas: ${text}` }] }],
+        generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: "Kore" }
+                }
+            }
+        },
+        model: 'gemini-2.5-flash-preview-tts'
     };
     const result = await callGeminiApi(GEMINI_AUDIO_API_URL, payload);
-    const audioBase64 = result.audioContent;
+    const audioBase64 = result.candidates[0].content.parts[0].inlineData.data;
     const pcmData = new Int16Array(Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0)).buffer);
     const buffer = new ArrayBuffer(44 + pcmData.length * 2);
     const view = new DataView(buffer);
@@ -271,11 +273,11 @@ function groupTranscriptionIntoTimedChunks(transcription, maxWordsPerChunk = 10)
         currentChunk.text.push(word.word);
         currentChunk.end = word.end;
         if (currentChunk.text.length >= maxWordsPerChunk) {
-            chunks.push({ ...currentChunk, text: currentChunk.text.join(" ") });
+            chunks.push({ ...currentChunk, text: currentChunk.text.join(" ").trim() });
             currentChunk = { text: [], start: -1, end: -1 };
         }
     });
-    if (currentChunk.text.length > 0) chunks.push({ ...currentChunk, text: currentChunk.text.join(" ") });
+    if (currentChunk.text.length > 0) chunks.push({ ...currentChunk, text: currentChunk.text.join(" ").trim() });
     return chunks;
 }
 
@@ -284,14 +286,18 @@ async function generateImagesForTimedChunks(timedChunks) {
     for (let i = 0; i < timedChunks.length; i++) {
         const chunk = timedChunks[i];
         const promptForImage = `Para a frase: "${chunk.text}", crie um prompt de imagem conciso em inglês para um gerador de IA. O prompt deve ser descritivo e cinematográfico. Responda apenas com o prompt.`;
-        const promptPayload = { contents: [{ parts: [{ text: promptForImage }] }] };
+        const promptPayload = { contents: [{ parts: [{ text: promptForImage }] }], generationConfig: { temperature: 0.7 } };
         const promptResult = await callGeminiApi(GEMINI_TEXT_API_URL, promptPayload);
         const imagePrompt = promptResult.candidates[0].content.parts[0].text.trim();
         
-        // Nova API de Imagem
-        const imagePayload = { "prompts": [`${imagePrompt}, 9:16 aspect ratio, vertical, cinematic, photorealistic`], "number_of_images": 1 };
+        const imagePayload = {
+            contents: [{ parts: [{ text: `${imagePrompt} (9:16 aspect ratio, vertical, cinematic, photorealistic)` }] }],
+            generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+        };
         const imageResult = await callGeminiApi(GEMINI_IMAGE_API_URL, imagePayload);
-        const imageBase64 = imageResult.images[0].image_b64;
+        const imagePart = imageResult.candidates[0].content.parts.find(p => p.inlineData && p.inlineData.mimeType.startsWith("image/"));
+        if (!imagePart) { throw new Error(`API não retornou uma imagem para o prompt: "${imagePrompt}"`); }
+        const imageBase64 = imagePart.inlineData.data;
         imageUrls.push(`data:image/png;base64,${imageBase64}`);
     }
     return imageUrls;
@@ -310,7 +316,6 @@ function formatSrtTime(seconds) {
 // ===================================================================================
 let renderer, subtitleAnimator;
 
-// 1. Função para preparar tudo (chamada uma vez pelo Puppeteer)
 async function initializeGenerator() {
     try {
         const statusEl = document.getElementById('generation-status');
@@ -356,7 +361,6 @@ async function initializeGenerator() {
     }
 }
 
-// 2. Função para renderizar um único quadro (chamada em loop pelo Puppeteer)
 function renderFrame(t) {
     if (!renderer) return null;
     renderer.updateScene(t);
@@ -364,7 +368,6 @@ function renderFrame(t) {
     return renderer.app.view.toDataURL('image/png').split(',')[1];
 }
 
-// Sinaliza ao Puppeteer que o script principal da página foi carregado
 window.pageReady = true;
 
 </script>
