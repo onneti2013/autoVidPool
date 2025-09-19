@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Gerador de Vídeo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+</head>
+<body>
+    <h1>Gerador de Vídeo - Renderização Offline</h1>
+    <div id="pixi-container" style="width: 405px; height: 720px; margin: auto; background: #000;"></div>
+    <pre id="roteiro" style="white-space: pre-wrap; background: #f0f0f0; padding: 10px; border-radius: 8px;"></pre>
+    <div id="generation-status"></div>
+
+<script>
+// ===================================================================================
+// CLASSE: CapCutStyleGenerator (MODIFICADA PARA RENDERIZAÇÃO OFFLINE)
+// ===================================================================================
+class CapCutStyleGenerator {
+    constructor(pixiContainerId) {
+        this.pixiContainerId = pixiContainerId;
+        this.app = null; this.subtitles = []; this.images = []; this.imageContainer = null;
+        this.canvasWidth = 405; this.canvasHeight = 720;
+        this.transitionSpeed = 0.7; this.blurIntensity = 8; this.safetyZoom = 1.25;
+        this.continuousIntensity = 0.6; this.currentSprite = null;
+        this.baseImageScale = 1; this.baseImageX = 0; this.baseImageY = 0;
+        this.lastImageIndex = -1; this.currentAnimationType = null;
+        this.animationPhase = 0; this.animationSpeed = 1; this.animationAmplitude = 1;
+        this.transitionTypes = ['smoothSlideLeft', 'smoothSlideRight', 'smoothSlideUp', 'smoothSlideDown', 'zoomCrossfade', 'rotateZoom', 'scaleSlide', 'blurCrossfade', 'explosiveZoomIn', 'explosiveZoomOut', 'spiralBlur', 'waveSlide', 'liquidMorph', 'shatterTransition', 'windBlur', 'orbitalSlide', 'shearSlideLeft', 'shearSlideRight', 'shearSlideUp', 'shearSlideDown'];
+        this.continuousAnimations = ['gentleDrift', 'smoothFloat', 'gentleSpin', 'breathingZoom', 'orbitalDrift', 'magneticPendulum', 'pulseWave', 'elasticFloat', 'focalDrift', 'hypnoticSpin', 'liquidBreathing', 'cosmicDrift', 'heartbeat', 'windSway', 'oceanWave'];
+        this.subtitleAnimator = null;
+        this.transitionStates = {}; // Armazena o estado das transições para ser determinístico
+    }
+
+    async init() {
+        // MUDANÇA CRÍTICA: autoStart: false e preserveDrawingBuffer: true
+        this.app = new PIXI.Application({
+            width: this.canvasWidth, height: this.canvasHeight, backgroundColor: 0x000000,
+            antialias: true, resolution: 2, autoStart: false, preserveDrawingBuffer: true
+        });
+        const pixiContainer = document.getElementById(this.pixiContainerId);
+        if (pixiContainer) {
+            pixiContainer.innerHTML = '';
+            pixiContainer.appendChild(this.app.view);
+        }
+        this.imageContainer = new PIXI.Container();
+        this.app.stage.addChild(this.imageContainer);
+    }
+
+    async loadAssets(imageDataUrls) {
+        this.images = await this.loadImagesFromDataUrls(imageDataUrls);
+    }
+
+    // NOVA FUNÇÃO MESTRA: Atualiza a cena para um tempo 't'
+    updateScene(t) {
+        const currentSubtitle = this.subtitles.find(sub => t >= sub.startTime && t <= sub.endTime);
+
+        if (!currentSubtitle) {
+            this.imageContainer.visible = false;
+        } else {
+            this.imageContainer.visible = true;
+            const imageIndex = this.subtitles.indexOf(currentSubtitle);
+            const imageChanged = this.lastImageIndex !== imageIndex;
+
+            if (imageChanged) {
+                this.setRandomAnimationForCurrentImage();
+                this.lastImageIndex = imageIndex;
+            }
+
+            const fromSubtitle = imageIndex > 0 ? this.subtitles[imageIndex - 1] : null;
+            const timeIntoTransition = t - currentSubtitle.startTime;
+            const isTransitioning = fromSubtitle && timeIntoTransition >= 0 && timeIntoTransition < this.transitionSpeed;
+
+            this.imageContainer.removeChildren(); // Limpa para redesenhar o estado correto
+
+            if (isTransitioning) {
+                const fromImage = this.images[imageIndex - 1];
+                const toImage = this.images[imageIndex];
+                
+                const progress = timeIntoTransition / this.transitionSpeed;
+                const easedProgress = this.getTransitionEasing(this.transitionStates[imageIndex], progress);
+
+                const fromData = this.createSafeSprite(fromImage.texture);
+                const toData = this.createSafeSprite(toImage.texture);
+
+                this.imageContainer.addChild(fromData.sprite, toData.sprite);
+                this.setupTransitionInitialState(fromData, toData, this.transitionStates[imageIndex]);
+                this.applyTransitionAnimation(fromData, toData, this.transitionStates[imageIndex], easedProgress);
+
+            } else {
+                const toImage = this.images[imageIndex];
+                if (toImage) {
+                    const data = this.createSafeSprite(toImage.texture);
+                    this.imageContainer.addChild(data.sprite);
+                    this.currentSprite = data.sprite;
+                    this.baseImageScale = data.baseScale; this.baseImageX = data.baseX; this.baseImageY = data.baseY;
+                    this.applyCurrentAnimation(t - currentSubtitle.startTime);
+                }
+            }
+        }
+
+        if(this.subtitleAnimator) {
+            this.subtitleAnimator.update(t);
+        }
+    }
+
+    applyCurrentAnimation(timeSinceImageStarted) {
+        if (!this.currentAnimationType || !this.currentSprite) return;
+        const values = this.calculateAnimationValues(this.currentAnimationType, timeSinceImageStarted);
+        this.currentSprite.scale.set(values.scale);
+        this.currentSprite.x = values.x;
+        this.currentSprite.y = values.y;
+        this.currentSprite.rotation = values.rotation;
+        this.currentSprite.skew.set(values.skew.x, values.skew.y);
+    }
+    
+    // MÉTODOS MANTIDOS (sem alterações ou com pequenas adaptações)
+    updateStatus(message) { const statusEl = document.getElementById('generation-status'); if (statusEl) statusEl.textContent = message; }
+    async loadImagesFromDataUrls(dataUrls) { const images = []; for (let i = 0; i < dataUrls.length; i++) { try { const texture = await PIXI.Assets.load(dataUrls[i]); images.push({ texture, name: `image_${i}.jpg` }); this.updateStatus(`✅ Imagem ${i + 1}/${dataUrls.length}`); } catch (error) { throw new Error(`Erro ao carregar imagem ${i + 1}: ${error.message}`); } } return images; }
+    parseSrtTime(timeStr) { const [time, ms] = timeStr.split(','); const [h, m, s] = time.split(':').map(Number); return h * 3600 + m * 60 + s + (parseInt(ms) / 1000); }
+    parseSRT(srtContent) {
+        const blocks = srtContent.trim().split(/\n\s*\n/);
+        this.subtitles = [];
+        for (let block of blocks) {
+            const lines = block.trim().split('\n');
+            if (lines.length < 2) continue;
+            try {
+                const timeRange = lines[1];
+                const text = lines.slice(2).join(' ').trim();
+                const [startStr, endStr] = timeRange.split(' --> ');
+                const startTime = this.parseSrtTime(startStr.trim());
+                const endTime = this.parseSrtTime(endStr.trim());
+                this.subtitles.push({ startTime, endTime, text });
+            } catch (e) { console.warn("Bloco SRT inválido ignorado:", block); }
+        }
+        if (this.subtitles.length === 0) throw new Error('Nenhuma legenda válida encontrada.');
+        
+        // Pré-calcula os tipos de transição para serem determinísticos
+        this.subtitles.forEach((_, index) => {
+            this.transitionStates[index] = this.transitionTypes[index % this.transitionTypes.length];
+        });
+    }
+    setRandomAnimationForCurrentImage() { const oldAnimation = this.currentAnimationType; let newAnimation = oldAnimation; if (this.continuousAnimations.length > 1) { while (newAnimation === oldAnimation) { newAnimation = this.continuousAnimations[Math.floor(Math.random() * this.continuousAnimations.length)]; } } else { newAnimation = this.continuousAnimations[0]; } this.currentAnimationType = newAnimation; this.animationPhase = Math.random() * Math.PI * 2; this.animationSpeed = 0.8 + Math.random() * 0.4; this.animationAmplitude = 0.7 + Math.random() * 0.6; }
+    createSafeSprite(texture, extraZoom = 1) { const sprite = new PIXI.Sprite(texture); const scale = Math.max(this.canvasWidth / texture.width, this.canvasHeight / texture.height) * this.safetyZoom * extraZoom; sprite.scale.set(scale); sprite.anchor.set(0.5); sprite.x = this.canvasWidth / 2; sprite.y = this.canvasHeight / 2; return { sprite, baseScale: scale, baseX: sprite.x, baseY: sprite.y }; }
+    applyTransitionAnimation(fromData, toData, transitionType, progress) { const { sprite: fromSprite, baseX: fromX, baseY: fromY, baseScale: fromScale } = fromData; const { sprite: toSprite, baseX: toX, baseY: toY, baseScale: toScale } = toData; const dynamicZoom = 1 + 0.8 * Math.sin(progress * Math.PI); switch (transitionType) { case 'smoothSlideLeft': fromSprite.x = fromX - (this.canvasWidth * progress); toSprite.x = (toX + this.canvasWidth) - (this.canvasWidth * progress); fromSprite.alpha = 1 - progress * 0.7; toSprite.alpha = progress; fromSprite.scale.set(fromScale * dynamicZoom); toSprite.scale.set(toScale * dynamicZoom); break; case 'smoothSlideRight': fromSprite.x = fromX + (this.canvasWidth * progress); toSprite.x = (toX - this.canvasWidth) + (this.canvasWidth * progress); fromSprite.alpha = 1 - progress * 0.7; toSprite.alpha = progress; fromSprite.scale.set(fromScale * dynamicZoom); toSprite.scale.set(toScale * dynamicZoom); break; case 'smoothSlideUp': fromSprite.y = fromY - (this.canvasHeight * progress); toSprite.y = (toY + this.canvasHeight) - (this.canvasHeight * progress); fromSprite.alpha = 1 - progress * 0.7; toSprite.alpha = progress; fromSprite.scale.set(fromScale * dynamicZoom); toSprite.scale.set(toScale * dynamicZoom); break; case 'smoothSlideDown': fromSprite.y = fromY + (this.canvasHeight * progress); toSprite.y = (toY - this.canvasHeight) + (this.canvasHeight * progress); fromSprite.alpha = 1 - progress * 0.7; toSprite.alpha = progress; fromSprite.scale.set(fromScale * dynamicZoom); toSprite.scale.set(toScale * dynamicZoom); break; case 'zoomCrossfade': fromSprite.scale.set(fromScale * (1 + progress * 0.3) * dynamicZoom); fromSprite.alpha = 1 - progress; toSprite.scale.set(((toScale * 0.8) + (toScale * 0.2 * progress)) * dynamicZoom); toSprite.alpha = progress; break; case 'rotateZoom': fromSprite.rotation = progress * Math.PI * 0.2; fromSprite.scale.set(fromScale * (1 + progress * 0.2) * dynamicZoom); fromSprite.alpha = 1 - progress; toSprite.scale.set(((toScale * 0.7) + (toScale * 0.3 * progress)) * dynamicZoom); toSprite.rotation = (1 - progress) * Math.PI * 0.5; toSprite.alpha = progress; break; case 'scaleSlide': fromSprite.x = fromX - (this.canvasWidth * progress * 0.3); fromSprite.scale.set(fromScale * (1 - progress * 0.2) * dynamicZoom); fromSprite.alpha = 1 - progress; toSprite.x = (toX + this.canvasWidth * 0.5) - (this.canvasWidth * 0.5 * progress); toSprite.scale.set(((toScale * 0.6) + (toScale * 0.4 * progress)) * dynamicZoom); toSprite.alpha = progress; break; case 'blurCrossfade': fromSprite.scale.set(fromScale * (1 + Math.sin(progress * Math.PI) * this.blurIntensity * 0.1) * dynamicZoom); fromSprite.alpha = 1 - progress; toSprite.scale.set(((toScale * 1.1) - (toScale * 0.1 * progress)) * (1 + Math.sin(progress * Math.PI) * this.blurIntensity * 0.05) * dynamicZoom); toSprite.alpha = progress; break; case 'explosiveZoomIn': fromSprite.alpha = 1 - progress; fromSprite.scale.set(fromScale * (1 + progress * 0.5) * dynamicZoom); fromSprite.rotation = progress * Math.PI * 0.5; toSprite.scale.set(((toScale * 0.1) + (toScale * 0.9 * progress)) * dynamicZoom); toSprite.alpha = progress; toSprite.rotation = (1 - progress) * Math.PI * 2; break; case 'explosiveZoomOut': fromSprite.alpha = 1 - progress; fromSprite.scale.set(fromScale * (1 - progress * 0.2) * dynamicZoom); const targetScale = (toScale * 3 * (1 - progress)) + (toScale * progress); toSprite.scale.set(targetScale * dynamicZoom); toSprite.rotation = -2 * Math.PI * (1 - progress); toSprite.alpha = progress; break; case 'spiralBlur': fromSprite.alpha = 1 - progress; fromSprite.rotation = progress * Math.PI * 2; fromSprite.scale.set(fromScale * (1 - progress * 0.3) * dynamicZoom); toSprite.scale.set(((toScale * 0.3) + (toScale * 0.7 * progress)) * dynamicZoom); toSprite.alpha = progress; toSprite.x = (toX + this.canvasWidth) - (this.canvasWidth * progress); toSprite.rotation = (1 - progress) * Math.PI * 4; break; case 'waveSlide': const waveOffset = Math.sin(progress * Math.PI * 6) * 20 * (1 - progress); fromSprite.x = fromX + (this.canvasWidth * progress); fromSprite.y = fromY + waveOffset; fromSprite.alpha = 1 - progress; fromSprite.skew.x = progress * 0.3; toSprite.x = (toX - this.canvasWidth) + (this.canvasWidth * progress); toSprite.y = toY - waveOffset; toSprite.alpha = progress; toSprite.skew.x = (1 - progress) * 0.3; fromSprite.scale.set(fromScale * dynamicZoom); toSprite.scale.set(toScale * dynamicZoom); break; case 'liquidMorph': fromSprite.alpha = 1 - progress; fromSprite.scale.set(fromScale * (1 + progress * 0.3) * dynamicZoom); fromSprite.skew.x = Math.sin(progress * Math.PI * 2) * 0.3; toSprite.scale.set(((toScale * 2) - toScale * progress) * dynamicZoom); toSprite.alpha = 0.3 + (progress * 0.7); toSprite.skew.y = Math.cos(progress * Math.PI * 3) * 0.2; break; case 'shatterTransition': fromSprite.alpha = 1 - progress; fromSprite.rotation = progress * Math.PI * 0.5; fromSprite.scale.set(fromScale * (1 - progress * 0.2) * dynamicZoom); toSprite.scale.set(((toScale * 0.5) + (toScale * 0.5 * progress)) * dynamicZoom); toSprite.alpha = progress; toSprite.x = toSprite.x + (toX - toSprite.x) * progress; toSprite.y = toSprite.y + (toY - toSprite.y) * progress; toSprite.rotation = toSprite.rotation * (1 - progress); break; case 'windBlur': const windIntensity = Math.sin(progress * Math.PI) * 1.5; fromSprite.alpha = 1 - progress; fromSprite.skew.x = windIntensity * 0.1; fromSprite.x = fromX + windIntensity * 20; fromSprite.y = fromY + Math.sin(progress * Math.PI * 4) * 10; toSprite.x = (toX + this.canvasWidth * 0.8) - (this.canvasWidth * 0.8 * progress); toSprite.y = (toY - this.canvasHeight * 0.3) + (this.canvasHeight * 0.3 * progress); toSprite.alpha = progress; toSprite.skew.x = -(1 - progress) * 0.2; fromSprite.scale.set(fromScale * dynamicZoom); toSprite.scale.set(toScale * dynamicZoom); break; case 'orbitalSlide': fromSprite.alpha = 1 - progress; fromSprite.rotation = progress * Math.PI; const startAngle = Math.atan2(toSprite.y - toY, toSprite.x - toX); const currentAngle = startAngle * (1 - progress); const currentRadius = this.canvasWidth * 1.2 * (1 - progress); toSprite.x = toX + Math.cos(currentAngle) * currentRadius; toSprite.y = toY + Math.sin(currentAngle) * currentRadius; toSprite.alpha = progress; toSprite.rotation = currentAngle + (2 * Math.PI * progress); fromSprite.scale.set(fromScale * dynamicZoom); toSprite.scale.set(toScale * dynamicZoom); break; case 'shearSlideLeft': fromSprite.skew.x = -progress * 0.7; fromSprite.alpha = 1 - progress; toSprite.skew.x = (1 - progress) * 0.7; toSprite.alpha = progress; fromSprite.scale.set(fromScale * dynamicZoom); toSprite.scale.set(toScale * dynamicZoom); break; case 'shearSlideRight': fromSprite.skew.x = progress * 0.7; fromSprite.alpha = 1 - progress; toSprite.skew.x = -(1 - progress) * 0.7; toSprite.alpha = progress; fromSprite.scale.set(fromScale * dynamicZoom); toSprite.scale.set(toScale * dynamicZoom); break; case 'shearSlideUp': fromSprite.skew.y = -progress * 0.7; fromSprite.alpha = 1 - progress; toSprite.skew.y = (1 - progress) * 0.7; toSprite.alpha = progress; fromSprite.scale.set(fromScale * dynamicZoom); toSprite.scale.set(toScale * dynamicZoom); break; case 'shearSlideDown': fromSprite.skew.y = progress * 0.7; fromSprite.alpha = 1 - progress; toSprite.skew.y = -(1 - progress) * 0.7; toSprite.alpha = progress; fromSprite.scale.set(fromScale * dynamicZoom); toSprite.scale.set(toScale * dynamicZoom); break; default: fromSprite.alpha = 1 - progress; toSprite.alpha = progress; break; } }
+    calculateAnimationValues(animationType, time) { const intensity = this.continuousIntensity * this.animationAmplitude; let scale = this.baseImageScale, x = this.baseImageX, y = this.baseImageY, rotation = 0; let skew = { x: 0, y: 0 }; switch (animationType) { case 'focalDrift': const driftSpeedX = 0.3, driftSpeedY = 0.5, focusSpeed = 0.2; x = this.baseImageX + Math.sin(time * driftSpeedX + this.animationPhase) * 12 * intensity; y = this.baseImageY + Math.cos(time * driftSpeedY + this.animationPhase * 1.2) * 8 * intensity; scale = this.baseImageScale * (1 + Math.sin(time * focusSpeed + this.animationPhase * 1.5) * 0.05 * intensity); break; case 'gentleDrift': x = this.baseImageX + Math.cos(time * 0.6 + this.animationPhase) * 8 * intensity; y = this.baseImageY + Math.sin(time * 0.8 + this.animationPhase) * 6 * intensity; break; case 'smoothFloat': y = this.baseImageY + Math.sin(time * 1.1 + this.animationPhase) * 10 * intensity; scale = this.baseImageScale * (1 + Math.cos(time * 1.5) * 0.025 * intensity); break; case 'gentleSpin': rotation = Math.sin(time * 0.5 + this.animationPhase) * 0.08 * intensity; scale = this.baseImageScale * (1 + Math.cos(time * 1.8) * 0.03 * intensity); break; case 'breathingZoom': scale = this.baseImageScale * (1 + Math.sin(time * 1.5 + this.animationPhase) * 0.06 * intensity); break; case 'orbitalDrift': const orbitRadius = 15 * intensity; x = this.baseImageX + Math.cos(time * 0.8 + this.animationPhase) * orbitRadius; y = this.baseImageY + Math.sin(time * 1.1 + this.animationPhase) * orbitRadius * 0.7; scale = this.baseImageScale * (1 + Math.sin(time * 2) * 0.03 * intensity); break; case 'magneticPendulum': rotation = Math.sin(time * 1.2 + this.animationPhase) * 0.12 * intensity; x = this.baseImageX + Math.cos(time * 0.6) * 10 * intensity; break; case 'pulseWave': const pulseIntensity = Math.sin(time * 3 + this.animationPhase); scale = this.baseImageScale * (1 + pulseIntensity * 0.08 * intensity); rotation = pulseIntensity * 0.05 * intensity; break; case 'elasticFloat': y = this.baseImageY + Math.sin(time * 1.8 + this.animationPhase) * 20 * intensity; scale = this.baseImageScale * (1 + Math.cos(time * 2.5) * 0.04 * intensity); skew.x = Math.sin(time * 1.3) * 0.1 * intensity; break; case 'hypnoticSpin': rotation = Math.sin(time * 0.8 + this.animationPhase) * 0.15 * intensity; scale = this.baseImageScale * (1 + Math.cos(time * 2.2) * 0.05 * intensity); break; case 'liquidBreathing': scale = this.baseImageScale * (1 + Math.sin(time * 1.1 + this.animationPhase) * 0.07 * intensity); skew.x = Math.sin(time * 1.4) * 0.08 * intensity; skew.y = Math.cos(time * 1.7) * 0.05 * intensity; break; case 'cosmicDrift': const cosmicRadius = 25 * intensity, cosmicAngle = time * 0.3 + this.animationPhase; x = this.baseImageX + Math.cos(cosmicAngle) * cosmicRadius; y = this.baseImageY + Math.sin(cosmicAngle * 1.4) * cosmicRadius * 0.6; scale = this.baseImageScale * (1 + Math.sin(time * 1.6) * 0.04 * intensity); rotation = Math.sin(time * 0.7) * 0.08 * intensity; break; case 'heartbeat': const heartBeat = Math.max(0, Math.sin(time * 4 + this.animationPhase)); scale = this.baseImageScale * (1 + heartBeat * 0.12 * intensity); break; case 'windSway': x = this.baseImageX + Math.sin(time * 0.9 + this.animationPhase) * 18 * intensity; rotation = Math.sin(time * 1.1) * 0.1 * intensity; scale = this.baseImageScale * (1 + Math.cos(time * 1.5) * 0.03 * intensity); break; case 'oceanWave': x = this.baseImageX + Math.sin(time * 1.2 + this.animationPhase) * 12 * intensity; y = this.baseImageY + Math.cos(time * 0.8 + this.animationPhase) * 8 * intensity; scale = this.baseImageScale * (1 + Math.sin(time * 2.1) * 0.05 * intensity); skew.x = Math.sin(time * 1.4) * 0.06 * intensity; break; } return { scale, x, y, rotation, skew }; }
+    setupTransitionInitialState(fromData, toData, transitionType) { const { sprite: fromSprite } = fromData; const { sprite: toSprite } = toData; fromSprite.alpha = 1; fromSprite.rotation = 0; fromSprite.skew.set(0); fromSprite.scale.set(fromData.baseScale); fromSprite.x = fromData.baseX; fromSprite.y = fromData.baseY; toSprite.alpha = 0; toSprite.rotation = 0; toSprite.skew.set(0); toSprite.scale.set(toData.baseScale); switch (transitionType) { case 'smoothSlideLeft': toSprite.x = toData.baseX + this.canvasWidth; toSprite.y = toData.baseY; break; case 'smoothSlideRight': toSprite.x = toData.baseX - this.canvasWidth; toSprite.y = toData.baseY; break; case 'smoothSlideUp': toSprite.x = toData.baseX; toSprite.y = toData.baseY + this.canvasHeight; break; case 'smoothSlideDown': toSprite.x = toData.baseX; toSprite.y = toData.baseY - this.canvasHeight; break; case 'zoomCrossfade': toSprite.x = toData.baseX; toSprite.y = toData.baseY; toSprite.scale.set(toData.baseScale * 0.8); break; case 'rotateZoom': toSprite.x = toData.baseX; toSprite.y = toData.baseY; toSprite.scale.set(toData.baseScale * 0.7); toSprite.rotation = Math.PI * 0.5; break; case 'scaleSlide': toSprite.x = toData.baseX + this.canvasWidth * 0.5; toSprite.y = toData.baseY; toSprite.scale.set(toData.baseScale * 0.6); break; case 'blurCrossfade': toSprite.x = toData.baseX; toSprite.y = toData.baseY; toSprite.scale.set(toData.baseScale * 1.1); break; case 'explosiveZoomIn': toSprite.scale.set(toData.baseScale * 0.1); toSprite.x = toData.baseX; toSprite.y = toData.baseY; toSprite.rotation = Math.PI * 2; break; case 'explosiveZoomOut': toSprite.scale.set(toData.baseScale * 3); toSprite.x = toData.baseX; toSprite.y = toData.baseY; toSprite.rotation = -Math.PI * 2; break; case 'spiralBlur': toSprite.scale.set(toData.baseScale * 0.3); toSprite.x = toData.baseX + this.canvasWidth; toSprite.y = toData.baseY; toSprite.rotation = Math.PI * 4; break; case 'waveSlide': toSprite.scale.set(toData.baseScale); toSprite.x = toData.baseX - this.canvasWidth; toSprite.y = toData.baseY; break; case 'liquidMorph': toSprite.scale.set(toData.baseScale * 2); toSprite.x = toData.baseX; toSprite.y = toData.baseY; toSprite.alpha = 0.3; break; case 'shatterTransition': toSprite.scale.set(toData.baseScale * 0.5); toSprite.x = toData.baseX + (Math.random() - 0.5) * this.canvasWidth; toSprite.y = toData.baseY + (Math.random() - 0.5) * this.canvasHeight; toSprite.rotation = Math.random() * Math.PI; break; case 'windBlur': toSprite.scale.set(toData.baseScale); toSprite.x = toData.baseX + this.canvasWidth * 0.8; toSprite.y = toData.baseY - this.canvasHeight * 0.3; break; case 'orbitalSlide': const angle = Math.random() * Math.PI * 2, radius = this.canvasWidth * 1.2; toSprite.scale.set(toData.baseScale); toSprite.x = toData.baseX + Math.cos(angle) * radius; toSprite.y = toData.baseY + Math.sin(angle) * radius; toSprite.rotation = angle; break; default: toSprite.x = toData.baseX; toSprite.y = toData.baseY; break; } }
+    easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
+    easeOutExpo(t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); }
+    easeInOutBack(t) { const c1 = 1.70158, c2 = c1 * 1.525; return t < 0.5 ? (Math.pow(2 * t, 2) * ((c2 + 1) * 2 * t - c2)) / 2 : (Math.pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2; }
+    easeOutBounce(t) { const n1 = 7.5625, d1 = 2.75; if (t < 1 / d1) return n1 * t * t; else if (t < 2 / d1) return n1 * (t -= 1.5 / d1) * t + 0.75; else if (t < 2.5 / d1) return n1 * (t -= 2.25 / d1) * t + 0.9375; else return n1 * (t -= 2.625 / d1) * t + 0.984375; }
+    getTransitionEasing(type, t) { switch (type) { case 'explosiveZoomIn': case 'explosiveZoomOut': return this.easeOutExpo(t); case 'spiralBlur': case 'liquidMorph': return this.easeInOutBack(t); case 'shatterTransition': return this.easeOutBounce(t); default: return this.easeOutQuart(t); } }
+}
+
+// ===================================================================================
+// CLASSE: WordSubtitleAnimator (MODIFICADA PARA RENDERIZAÇÃO OFFLINE)
+// ===================================================================================
+class WordSubtitleAnimator {
+    constructor() {
+        this.app = null; this.container = null; this.wordElements = [];
+        this.timeline = []; this.isInitialized = false;
+        this.config = { fontSize: 48, fontFamily: 'Arial Black, sans-serif', fontWeight: 900, fillColor: 0xFFFFFF, strokeColor: 0x000000, strokeThickness: 4, dropShadowColor: 0x000000, dropShadowAlpha: 0.8, dropShadowDistance: 3, dropShadowBlur: 2, popScale: 1.2, popDuration: 0.15, fadeDuration: 0.1, maxWidth: 380, lineHeight: 1.2, bottomMargin: 120, wordsPerLine: 4 };
+    }
+
+    init(renderer) {
+        if (!renderer || !renderer.app) throw new Error('Renderer inválido');
+        this.app = renderer.app;
+        this.setupContainer();
+        this.isInitialized = true;
+    }
+
+    // NOVA FUNÇÃO MESTRA: Atualiza as legendas para um tempo 't'
+    update(t) {
+        if (!this.isInitialized || this.timeline.length === 0) return;
+
+        let activeWord = this.timeline.find(wordData => t >= wordData.start && t < wordData.end);
+        
+        this.wordElements.forEach(element => {
+            if (activeWord && element.wordData.start === activeWord.start) {
+                const timeIntoWord = t - activeWord.start;
+                const duration = 0.3; 
+                const progress = Math.min(timeIntoWord / duration, 1);
+                const easeOutBack = 1 - Math.pow(1 - progress, 3);
+                
+                element.visible = true;
+                element.alpha = progress;
+                element.scale.set(1 + (easeOutBack * 0.1));
+            } else {
+                element.visible = false;
+            }
+        });
+    }
+
+    // MÉTODOS MANTIDOS (sem alterações)
+    setupContainer() { if (this.container) { this.app.stage.removeChild(this.container); } this.container = new PIXI.Container(); this.container.name = 'subtitles-container'; this.container.x = this.app.screen.width / 2; this.container.y = this.app.screen.height - this.config.bottomMargin; this.app.stage.addChild(this.container); }
+    setTimeline(data) { this.timeline = []; let words = data.words || (Array.isArray(data) ? data.flatMap(s => s.words || []) : []); words.forEach(wordData => { if(wordData && wordData.word) this.timeline.push({ word: wordData.word.trim(), start: wordData.start, end: wordData.end, duration: wordData.end - wordData.start }); }); if (this.timeline.length > 0) { this.createWordElements(); } }
+    createWordElements() { this.container.removeChildren(); this.wordElements = []; this.timeline.forEach((wordData, index) => { const textElement = this.createWordElement(wordData, index); this.container.addChild(textElement); this.wordElements.push(textElement); }); }
+    createWordElement(wordData, index) { const textStyle = new PIXI.TextStyle({ fontFamily: this.config.fontFamily, fontSize: this.config.fontSize, fontWeight: this.config.fontWeight, fill: this.config.fillColor, stroke: this.config.strokeColor, strokeThickness: this.config.strokeThickness, dropShadow: true, dropShadowColor: this.config.dropShadowColor, dropShadowAlpha: this.config.dropShadowAlpha, dropShadowDistance: this.config.dropShadowDistance, dropShadowBlur: this.config.dropShadowBlur, wordWrap: false }); const textElement = new PIXI.Text(wordData.word, textStyle); textElement.anchor.set(0.5, 0.5); textElement.visible = false; textElement.wordData = wordData; textElement.wordIndex = index; return textElement; }
+    destroy() { if (this.container && this.container.parent) { this.container.parent.removeChild(this.container); } this.wordElements = []; this.timeline = []; this.isInitialized = false; }
+}
+
+// ===================================================================================
+// FUNÇÕES GLOBAIS E DE API (MANTIDAS DO SEU CÓDIGO ORIGINAL)
+// ===================================================================================
+const THEME = window.THEME || "Curiosidades sobre o MAR";
+const GEMINI_API_KEY = window.GEMINI_API_KEY;
+const GROQ_API_KEY = window.GROQ_API_KEY;
+const GEMINI_TEXT_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_AUDIO_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/text-to-speech:synthesizeSpeech?key=${GEMINI_API_KEY}`; // TTS API
+const GEMINI_IMAGE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/image-generation-model-001:generateImages?key=${GEMINI_API_KEY}`; // Image API
+
+async function callGeminiApi(url, payload) {
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Erro na API Gemini: ${response.statusText}. Corpo: ${errorBody}`);
+    }
+    return response.json();
+}
+
+async function generateScript() {
+    const scriptPrompt = `Crie um roteiro de narração curto e envolvente para um vídeo vertical sobre o tema: "${THEME}". O texto deve ser fluido e natural, dividido em 3 parágrafos curtos. Responda apenas com o texto do roteiro, sem nenhum tipo de formatação ou título.`;
+    const scriptPayload = { contents: [{ parts: [{ text: scriptPrompt }] }], generationConfig: { temperature: 0.7 } };
+    const scriptResult = await callGeminiApi(GEMINI_TEXT_API_URL, scriptPayload);
+    return scriptResult.candidates[0].content.parts[0].text.trim().replace(/(\r\n|\n|\r)/gm, " "); // Limpa quebras de linha
+}
+
+async function generateAudio(text) {
+    // Nova API TTS do Gemini
+    const payload = {
+        "input": { "text": text },
+        "voice": { "languageCode": "pt-BR", "name": "pt-BR-Standard-B" }, // Voz feminina
+        "audioConfig": { "audioEncoding": "LINEAR16", "sampleRateHertz": 24000 }
+    };
+    const result = await callGeminiApi(GEMINI_AUDIO_API_URL, payload);
+    const audioBase64 = result.audioContent;
+    const pcmData = new Int16Array(Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0)).buffer);
+    const buffer = new ArrayBuffer(44 + pcmData.length * 2);
+    const view = new DataView(buffer);
+    const writeString = (offset, string) => { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } };
+    writeString(0, 'RIFF'); view.setUint32(4, 36 + pcmData.length * 2, true); writeString(8, 'WAVE');
+    writeString(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true); view.setUint32(24, 24000, true); view.setUint32(28, 48000, true);
+    view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data');
+    view.setUint32(40, pcmData.length * 2, true);
+    for (let i = 0; i < pcmData.length; i++) { view.setInt16(44 + i * 2, pcmData[i], true); }
+    return new Blob([view], { type: 'audio/wav' });
+}
+
+async function transcribeAudio(audioBlob) {
+    const formData = new FormData();
+    formData.append("file", audioBlob, "audio.wav");
+    formData.append("model", "whisper-large-v3");
+    formData.append("response_format", "verbose_json");
+    formData.append("timestamp_granularities[]", "word");
+    const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+        method: "POST", headers: { 'Authorization': `Bearer ${GROQ_API_KEY}` }, body: formData
+    });
+    if (!response.ok) { const error = await response.json(); throw new Error(`Erro na API Groq: ${error.error.message}`); }
+    return response.json();
+}
+
+function groupTranscriptionIntoTimedChunks(transcription, maxWordsPerChunk = 10) {
+    if (!transcription || !transcription.words) return [];
+    const chunks = []; let currentChunk = { text: [], start: -1, end: -1 };
+    transcription.words.forEach(word => {
+        if (currentChunk.start === -1) currentChunk.start = word.start;
+        currentChunk.text.push(word.word);
+        currentChunk.end = word.end;
+        if (currentChunk.text.length >= maxWordsPerChunk) {
+            chunks.push({ ...currentChunk, text: currentChunk.text.join(" ") });
+            currentChunk = { text: [], start: -1, end: -1 };
+        }
+    });
+    if (currentChunk.text.length > 0) chunks.push({ ...currentChunk, text: currentChunk.text.join(" ") });
+    return chunks;
+}
+
+async function generateImagesForTimedChunks(timedChunks) {
+    const imageUrls = [];
+    for (let i = 0; i < timedChunks.length; i++) {
+        const chunk = timedChunks[i];
+        const promptForImage = `Para a frase: "${chunk.text}", crie um prompt de imagem conciso em inglês para um gerador de IA. O prompt deve ser descritivo e cinematográfico. Responda apenas com o prompt.`;
+        const promptPayload = { contents: [{ parts: [{ text: promptForImage }] }] };
+        const promptResult = await callGeminiApi(GEMINI_TEXT_API_URL, promptPayload);
+        const imagePrompt = promptResult.candidates[0].content.parts[0].text.trim();
+        
+        // Nova API de Imagem
+        const imagePayload = { "prompts": [`${imagePrompt}, 9:16 aspect ratio, vertical, cinematic, photorealistic`], "number_of_images": 1 };
+        const imageResult = await callGeminiApi(GEMINI_IMAGE_API_URL, imagePayload);
+        const imageBase64 = imageResult.images[0].image_b64;
+        imageUrls.push(`data:image/png;base64,${imageBase64}`);
+    }
+    return imageUrls;
+}
+
+function formatSrtTime(seconds) {
+    const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+    const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+    const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+    const ms = Math.round((seconds - Math.floor(seconds)) * 1000).toString().padStart(3, '0');
+    return `${h}:${m}:${s},${ms}`;
+}
+
+// ===================================================================================
+// NOVAS FUNÇÕES DE INTERFACE PARA O PUPPETEER
+// ===================================================================================
+let renderer, subtitleAnimator;
+
+// 1. Função para preparar tudo (chamada uma vez pelo Puppeteer)
+async function initializeGenerator() {
+    try {
+        const statusEl = document.getElementById('generation-status');
+        statusEl.textContent = 'Gerando roteiro...';
+        const scriptText = await generateScript();
+        document.getElementById('roteiro').textContent = scriptText;
+
+        statusEl.textContent = 'Gerando áudio...';
+        const audioBlob = await generateAudio(scriptText);
+
+        statusEl.textContent = 'Transcrevendo áudio...';
+        const transcriptionResult = await transcribeAudio(audioBlob);
+        
+        statusEl.textContent = 'Agrupando sentenças...';
+        const timedChunks = groupTranscriptionIntoTimedChunks(transcriptionResult);
+
+        statusEl.textContent = 'Gerando imagens...';
+        const imageDataUrls = await generateImagesForTimedChunks(timedChunks);
+
+        statusEl.textContent = 'Inicializando motor de renderização...';
+        renderer = new CapCutStyleGenerator('pixi-container');
+        await renderer.init();
+        subtitleAnimator = new WordSubtitleAnimator();
+        subtitleAnimator.init(renderer);
+        renderer.subtitleAnimator = subtitleAnimator;
+
+        await renderer.loadAssets(imageDataUrls);
+        const srtContent = timedChunks.map((chunk, i) => `${i + 1}\n${formatSrtTime(chunk.start)} --> ${formatSrtTime(chunk.end)}\n${chunk.text}`).join('\n\n');
+        renderer.parseSRT(srtContent);
+        subtitleAnimator.setTimeline(transcriptionResult);
+
+        const audioBuffer = await audioBlob.arrayBuffer();
+        const audioArray = Array.from(new Uint8Array(audioBuffer));
+
+        const audioDuration = transcriptionResult.duration;
+        statusEl.textContent = 'Inicialização concluída. Pronto para renderizar.';
+        return { success: true, duration: audioDuration, audio: audioArray };
+
+    } catch (error) {
+        console.error("Erro na inicialização:", error);
+        document.getElementById('generation-status').textContent = `ERRO: ${error.message}`;
+        return { success: false, error: error.message };
+    }
+}
+
+// 2. Função para renderizar um único quadro (chamada em loop pelo Puppeteer)
+function renderFrame(t) {
+    if (!renderer) return null;
+    renderer.updateScene(t);
+    renderer.app.renderer.render(renderer.app.stage);
+    return renderer.app.view.toDataURL('image/png').split(',')[1];
+}
+
+// Sinaliza ao Puppeteer que o script principal da página foi carregado
+window.pageReady = true;
+
+</script>
+</body>
+</html>
