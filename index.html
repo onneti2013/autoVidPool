@@ -341,11 +341,16 @@ async function generateImagesForTimedChunks(timedChunks) {
         if (!imagePart) { throw new Error(`API não retornou uma imagem para o prompt: "${imagePrompt}"`); }
         const imageBase64 = imagePart.inlineData.data;
         imageUrls.push(`data:image/png;base64,${imageBase64}`);
+        
+        // --- Linhas Adicionadas ---
+        console.log(`Imagem ${i + 1}/${timedChunks.length} gerada. Pausando por 6.1 segundos para respeitar a cota.`);
+        await sleep(6100); // Pausa de 6.1 segundos
     }
     return imageUrls;
 }
 
 function formatSrtTime(seconds) { const h = Math.floor(seconds / 3600).toString().padStart(2, '0'); const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0'); const s = Math.floor(seconds % 60).toString().padStart(2, '0'); const ms = Math.round((seconds - Math.floor(seconds)) * 1000).toString().padStart(3, '0'); return `${h}:${m}:${s},${ms}`; }
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 let renderer, subtitleAnimator;
 
