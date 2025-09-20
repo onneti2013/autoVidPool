@@ -16,10 +16,18 @@
 // CLASSE: CapCutStyleGenerator (MODIFICADA PARA RENDERIZAÇÃO OFFLINE)
 // ===================================================================================
 class CapCutStyleGenerator {
-    constructor(pixiContainerId) {
+    constructor(pixiContainerId, aspectRatio = '9:16') {
         this.pixiContainerId = pixiContainerId;
         this.app = null; this.subtitles = []; this.images = []; this.imageContainer = null;
-        this.canvasWidth = 405; this.canvasHeight = 720;
+        
+        if (aspectRatio === '16:9') {
+            this.canvasWidth = 720;
+            this.canvasHeight = 405;
+        } else { // Padrão 9:16
+            this.canvasWidth = 405; 
+            this.canvasHeight = 720;
+        }
+        
         this.transitionSpeed = 0.7; this.blurIntensity = 8; this.safetyZoom = 1.25;
         this.continuousIntensity = 0.6; this.currentSprite = null;
         this.baseImageScale = 1; this.baseImageX = 0; this.baseImageY = 0;
@@ -215,7 +223,16 @@ async function callGeminiApi(url, payload) {
 }
 
 async function generateScript() {
-    const scriptPrompt = `Crie um roteiro de narração curto e envolvente para um vídeo vertical sobre o tema: "${THEME}". O texto deve ser fluido e natural, dividido em 3 parágrafos curtos. Responda apenas com o texto do roteiro.`;
+
+    const DURATION_TYPE = window.DURATION_TYPE || 'curto';
+    const LANGUAGE_VID = window.LANGUAGE_VID || 'português do Brasil';
+
+    const durationPrompt = DURATION_TYPE === 'longo'
+        ? "longo e detalhado para um vídeo de aproximadamente 4 minutos, dividido em vários parágrafos."
+        : "curto e envolvente para um vídeo vertical, dividido em 3 parágrafos curtos.";
+    
+    const scriptPrompt = `Crie um roteiro de narração ${durationPrompt} em ${LANGUAGE_VID} sobre o tema: "${THEME}". O texto deve ser fluido e natural. Responda apenas com o texto do roteiro.`;
+
     const scriptPayload = { contents: [{ parts: [{ text: scriptPrompt }] }], generationConfig: { temperature: 0.7 } };
     const scriptResult = await callGeminiApi(GEMINI_TEXT_API_URL, scriptPayload);
     const scriptPromptRevise = `Verifique o texto se existe qualquer orientação de como vai ser o video como (Música...), (Cena...), (Narrador...) ou instruções, caso exista remova qualquer instrução e me traga apenas o roteiro limpo, segue o roteiro a seguir, também não quero informações sua duzendo que trouxe o roteiro quero apenas o texto do roteiro não seja teimoso apenas o texto do roteiro: "${scriptResult.candidates[0].content.parts[0].text.trim()}".`;
@@ -283,17 +300,24 @@ function groupTranscriptionIntoTimedChunks(transcription, maxWordsPerChunk = 10)
 
 async function generateImagesForTimedChunks(timedChunks) {
     const imageUrls = [];
+    const ASPECT_RATIO = window.ASPECT_RATIO || '9:16';
+    
     for (let i = 0; i < timedChunks.length; i++) {
         const chunk = timedChunks[i];
         const promptForImage = `Para a frase: "${chunk.text}", crie um prompt de imagem conciso em inglês para um gerador de IA. O prompt deve ser descritivo e cinematográfico. Responda apenas com o prompt.`;
         const promptPayload = { contents: [{ parts: [{ text: promptForImage }] }], generationConfig: { temperature: 0.7 } };
         const promptResult = await callGeminiApi(GEMINI_TEXT_API_URL, promptPayload);
         const imagePrompt = promptResult.candidates[0].content.parts[0].text.trim();
+
+        const aspectRatioDetails = ASPECT_RATIO === '16:9'
+            ? `(16:9 aspect ratio, horizontal, cinematic, photorealistic)`
+            : `(9:16 aspect ratio, vertical, cinematic, photorealistic)`;
         
         const imagePayload = {
-            contents: [{ parts: [{ text: `${imagePrompt} (9:16 aspect ratio, vertical, cinematic, photorealistic)` }] }],
+            contents: [{ parts: [{ text: `${imagePrompt} ${aspectRatioDetails}` }] }],
             generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
         };
+        
         const imageResult = await callGeminiApi(GEMINI_IMAGE_API_URL, imagePayload);
         const imagePart = imageResult.candidates[0].content.parts.find(p => p.inlineData && p.inlineData.mimeType.startsWith("image/"));
         if (!imagePart) { throw new Error(`API não retornou uma imagem para o prompt: "${imagePrompt}"`); }
@@ -335,8 +359,10 @@ async function initializeGenerator() {
         statusEl.textContent = 'Gerando imagens...';
         const imageDataUrls = await generateImagesForTimedChunks(timedChunks);
 
+        const ASPECT_RATIO = window.ASPECT_RATIO || '9:16';
+        
         statusEl.textContent = 'Inicializando motor de renderização...';
-        renderer = new CapCutStyleGenerator('pixi-container');
+        renderer = new CapCutStyleGenerator('pixi-container', ASPECT_RATIO);
         await renderer.init();
         subtitleAnimator = new WordSubtitleAnimator();
         subtitleAnimator.init(renderer);
