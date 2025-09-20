@@ -35,12 +35,17 @@ async function generateVideo(port) {
     
     const browser = await puppeteer.launch({
         headless: 'new',
+        // ================== CORREÇÃO COM BASE NO SEU DADO ==================
+        // Aumentando para 1 hora (3.600.000 ms) para garantir que a geração de
+        // assets de vídeos longos nunca seja interrompida.
+        protocolTimeout: 3600000, 
+        // ==================================================================
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
         ]
-    });
+    })
 
     try {
         const page = await browser.newPage();
