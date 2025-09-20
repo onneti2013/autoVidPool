@@ -368,31 +368,52 @@ async function callGeminiApi(url, payload) {
 async function generateScript() {
     const DURATION_TYPE = window.DURATION_TYPE || 'curto';
     const LANGUAGE_VID = window.LANGUAGE_VID || 'português do Brasil';
-    const durationPrompt = DURATION_TYPE === 'longo'
-        ? "longo e envolvente de no máximo 3 minutos para um vídeo horizontal"
-        : "curto e envolvente para um vídeo vertical, dividido em 3 parágrafos curtos";
-    
-    // const scriptPrompt = `Crie um roteiro de narração ${durationPrompt} em ${LANGUAGE_VID} sobre o tema: "${THEME}". O texto deve ser fluido e natural. Responda apenas com o texto do roteiro.`;
+    const THEME = window.THEME;
 
-    const scriptPrompt = `Crie APENAS o texto de narração ${durationPrompt} em ${LANGUAGE_VID} sobre o tema: "${THEME}". 
+    // --- Template do Prompt em Inglês (implementando sua ideia) ---
 
-    REGRAS OBRIGATÓRIAS:
-    - Escreva SOMENTE o que será falado pelo narrador
-    - NUNCA mencione: câmera, planos, cenas, cortes, fade, close-up ou qualquer termo técnico de vídeo
-    - NUNCA use direções como "imagine", "vemos", "a cena mostra"
-    - Use linguagem natural de storytelling, como se estivesse contando uma história
-    - Mantenha fluidez para narração em voz alta
-    - Estruture: introdução envolvente → desenvolvimento → conclusão marcante
-    
-    Responda apenas com o texto puro da narração.`;
-    
+    // 1. Define as instruções de duração em inglês
+    const durationInstructions = DURATION_TYPE === 'longo'
+        ? "a long and engaging narration script for a video of approximately 3 minutes, divided into several paragraphs"
+        : "a short and engaging narration script for a vertical video, divided into 3 short paragraphs";
+
+    // 2. Monta o prompt principal universal em inglês
+    const scriptPrompt = `
+        Your task is to create ONLY a narration script for a video.
+
+        **Output Language:** You MUST write the entire script in the following language: **${LANGUAGE_VID}**.
+        **Topic:** The script must be about: **"${THEME}"**.
+        **Length and Style:** It must be **${durationInstructions}**.
+
+        **MANDATORY RULES:**
+        1.  Write ONLY the text that the narrator will speak.
+        2.  Do NOT include any technical video terms like "camera," "scene," "fade," "close-up."
+        3.  Do NOT use directional cues like "imagine," "we see," "the scene shows."
+        4.  Use a natural, fluent, storytelling tone.
+        5.  Structure: engaging introduction -> development -> memorable conclusion.
+
+        **Final Output:** Respond ONLY with the pure narration text, in the requested language (${LANGUAGE_VID}).
+    `;
+
+    // 3. Monta o prompt de revisão universal em inglês
+    const scriptPromptReviseTemplate = `
+        Review the following script text.
+        Your task is to remove any technical directions (like "Scene:", "Music:", "Narrator:") and any conversational text from you, the AI.
+        Return ONLY the pure, clean narration text.
+
+        Here is the script to clean:
+        "{script}"
+    `;
+
+    // --- Lógica para chamar a API (continua a mesma) ---
     const scriptPayload = { contents: [{ parts: [{ text: scriptPrompt }] }], generationConfig: { temperature: 0.7 } };
     const scriptResult = await callGeminiApi(GEMINI_TEXT_API_URL, scriptPayload);
     
     const scriptContent = getValidatedGeminiContent(scriptResult, "Gemini Text");
     const initialScript = scriptContent.parts[0].text.trim();
 
-    const scriptPromptRevise = `Verifique o texto se existe qualquer orientação de como vai ser o video como (Música...), (Cena...), (Narrador...) ou instruções, caso exista remova qualquer instrução e me traga apenas o roteiro limpo, segue o roteiro a seguir, também não quero informações sua duzendo que trouxe o roteiro quero apenas o texto do roteiro não seja teimoso apenas o texto do roteiro: "${initialScript}".`;
+    // Injeta o roteiro gerado no template do prompt de revisão
+    const scriptPromptRevise = scriptPromptReviseTemplate.replace('{script}', initialScript);
     const scriptRevisePayload = { contents: [{ parts: [{ text: scriptPromptRevise }] }], generationConfig: { temperature: 0.7 } };
     const reviseResult = await callGeminiApi(GEMINI_TEXT_API_URL, scriptRevisePayload);
     
