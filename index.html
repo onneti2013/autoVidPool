@@ -198,7 +198,7 @@ class WordSubtitleAnimator {
 }
 
 // ===================================================================================
-// FUNÇÕES GLOBAIS E DE API (COM AS SUAS URLS ORIGINAIS RESTAURADAS)
+// FUNÇÕES GLOBAIS E DE API (COM A VALIDAÇÃO DE RESPOSTA)
 // ===================================================================================
 const THEME = window.THEME || "Curiosidades sobre o MAR";
 const GEMINI_API_KEY = window.GEMINI_API_KEY;
@@ -208,6 +208,15 @@ const GROQ_API_KEY = window.GROQ_API_KEY;
 const GEMINI_TEXT_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
 const GEMINI_AUDIO_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${GEMINI_API_KEY}`;
 const GEMINI_IMAGE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${GEMINI_API_KEY}`;
+
+// FUNÇÃO AJUDANTE PARA VALIDAR RESPOSTAS DO GEMINI
+function getValidatedGeminiContent(response, apiName = "Gemini") {
+    if (!response.candidates || response.candidates.length === 0 || !response.candidates[0].content) {
+        console.error(`Resposta da API ${apiName} inválida ou vazia:`, JSON.stringify(response));
+        throw new Error(`A API ${apiName} retornou uma resposta vazia ou bloqueada. Verifique os logs do navegador para detalhes.`);
+    }
+    return response.candidates[0].content;
+}
 
 async function callGeminiApi(url, payload) {
     const response = await fetch(url, {
@@ -223,10 +232,8 @@ async function callGeminiApi(url, payload) {
 }
 
 async function generateScript() {
-
     const DURATION_TYPE = window.DURATION_TYPE || 'curto';
     const LANGUAGE_VID = window.LANGUAGE_VID || 'português do Brasil';
-
     const durationPrompt = DURATION_TYPE === 'longo'
         ? "longo e detalhado para um vídeo de aproximadamente 4 minutos, dividido em vários parágrafos."
         : "curto e envolvente para um vídeo vertical, dividido em 3 parágrafos curtos.";
@@ -235,10 +242,16 @@ async function generateScript() {
 
     const scriptPayload = { contents: [{ parts: [{ text: scriptPrompt }] }], generationConfig: { temperature: 0.7 } };
     const scriptResult = await callGeminiApi(GEMINI_TEXT_API_URL, scriptPayload);
-    const scriptPromptRevise = `Verifique o texto se existe qualquer orientação de como vai ser o video como (Música...), (Cena...), (Narrador...) ou instruções, caso exista remova qualquer instrução e me traga apenas o roteiro limpo, segue o roteiro a seguir, também não quero informações sua duzendo que trouxe o roteiro quero apenas o texto do roteiro não seja teimoso apenas o texto do roteiro: "${scriptResult.candidates[0].content.parts[0].text.trim()}".`;
+    
+    const scriptContent = getValidatedGeminiContent(scriptResult, "Gemini Text");
+    const initialScript = scriptContent.parts[0].text.trim();
+
+    const scriptPromptRevise = `Verifique o texto se existe qualquer orientação de como vai ser o video como (Música...), (Cena...), (Narrador...) ou instruções, caso exista remova qualquer instrução e me traga apenas o roteiro limpo, segue o roteiro a seguir, também não quero informações sua duzendo que trouxe o roteiro quero apenas o texto do roteiro não seja teimoso apenas o texto do roteiro: "${initialScript}".`;
     const scriptRevisePayload = { contents: [{ parts: [{ text: scriptPromptRevise }] }], generationConfig: { temperature: 0.7 } };
-    const reviseScript = await callGeminiApi(GEMINI_TEXT_API_URL, scriptRevisePayload);
-    return reviseScript.candidates[0].content.parts[0].text.trim();
+    const reviseResult = await callGeminiApi(GEMINI_TEXT_API_URL, scriptRevisePayload);
+    
+    const reviseContent = getValidatedGeminiContent(reviseResult, "Gemini Text (Revise)");
+    return reviseContent.parts[0].text.trim();
 }
 
 async function generateAudio(text) {
@@ -255,7 +268,9 @@ async function generateAudio(text) {
         model: 'gemini-2.5-flash-preview-tts'
     };
     const result = await callGeminiApi(GEMINI_AUDIO_API_URL, payload);
-    const audioBase64 = result.candidates[0].content.parts[0].inlineData.data;
+    const audioContent = getValidatedGeminiContent(result, "Gemini Audio");
+    const audioBase64 = audioContent.parts[0].inlineData.data;
+
     const pcmData = new Int16Array(Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0)).buffer);
     const buffer = new ArrayBuffer(44 + pcmData.length * 2);
     const view = new DataView(buffer);
@@ -307,7 +322,9 @@ async function generateImagesForTimedChunks(timedChunks) {
         const promptForImage = `Para a frase: "${chunk.text}", crie um prompt de imagem conciso em inglês para um gerador de IA. O prompt deve ser descritivo e cinematográfico. Responda apenas com o prompt.`;
         const promptPayload = { contents: [{ parts: [{ text: promptForImage }] }], generationConfig: { temperature: 0.7 } };
         const promptResult = await callGeminiApi(GEMINI_TEXT_API_URL, promptPayload);
-        const imagePrompt = promptResult.candidates[0].content.parts[0].text.trim();
+        
+        const promptContent = getValidatedGeminiContent(promptResult, "Gemini Image Prompt");
+        const imagePrompt = promptContent.parts[0].text.trim();
 
         const aspectRatioDetails = ASPECT_RATIO === '16:9'
             ? `(16:9 aspect ratio, horizontal, cinematic, photorealistic)`
@@ -319,7 +336,8 @@ async function generateImagesForTimedChunks(timedChunks) {
         };
         
         const imageResult = await callGeminiApi(GEMINI_IMAGE_API_URL, imagePayload);
-        const imagePart = imageResult.candidates[0].content.parts.find(p => p.inlineData && p.inlineData.mimeType.startsWith("image/"));
+        const imageContent = getValidatedGeminiContent(imageResult, "Gemini Image Generation");
+        const imagePart = imageContent.parts.find(p => p.inlineData && p.inlineData.mimeType.startsWith("image/"));
         if (!imagePart) { throw new Error(`API não retornou uma imagem para o prompt: "${imagePrompt}"`); }
         const imageBase64 = imagePart.inlineData.data;
         imageUrls.push(`data:image/png;base64,${imageBase64}`);
@@ -327,17 +345,8 @@ async function generateImagesForTimedChunks(timedChunks) {
     return imageUrls;
 }
 
-function formatSrtTime(seconds) {
-    const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
-    const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
-    const s = Math.floor(seconds % 60).toString().padStart(2, '0');
-    const ms = Math.round((seconds - Math.floor(seconds)) * 1000).toString().padStart(3, '0');
-    return `${h}:${m}:${s},${ms}`;
-}
+function formatSrtTime(seconds) { const h = Math.floor(seconds / 3600).toString().padStart(2, '0'); const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0'); const s = Math.floor(seconds % 60).toString().padStart(2, '0'); const ms = Math.round((seconds - Math.floor(seconds)) * 1000).toString().padStart(3, '0'); return `${h}:${m}:${s},${ms}`; }
 
-// ===================================================================================
-// NOVAS FUNÇÕES DE INTERFACE PARA O PUPPETEER
-// ===================================================================================
 let renderer, subtitleAnimator;
 
 async function initializeGenerator() {
@@ -387,12 +396,7 @@ async function initializeGenerator() {
     }
 }
 
-function renderFrame(t) {
-    if (!renderer) return null;
-    renderer.updateScene(t);
-    renderer.app.renderer.render(renderer.app.stage);
-    return renderer.app.view.toDataURL('image/png').split(',')[1];
-}
+function renderFrame(t) { if (!renderer) return null; renderer.updateScene(t); renderer.app.renderer.render(renderer.app.stage); return renderer.app.view.toDataURL('image/png').split(',')[1]; }
 
 window.pageReady = true;
 
