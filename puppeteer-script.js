@@ -23,6 +23,10 @@ async function startServer() {
 async function generateVideo(port) {
     console.log('Iniciando geração de vídeo...');
     const theme = process.env.THEME || 'Curiosidades sobre o MAR';
+    const aspectRatio = process.env.ASPECT_RATIO || '9:16';
+    const durationType = process.env.DURATION_TYPE || 'curto';
+    const language = process.env.LANGUAGE_VID || 'portugues do Brazil';
+
     const geminiKey = process.env.GEMINI_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
     
@@ -47,6 +51,10 @@ async function generateVideo(port) {
 
         await page.evaluateOnNewDocument((theme, geminiKey, groqKey) => {
             window.THEME = theme;
+            window.ASPECT_RATIO = aspectRatio;
+            window.DURATION_TYPE = durationType;
+            window.LANGUAGE_VID = language;
+            
             window.GEMINI_API_KEY = geminiKey;
             window.GROQ_API_KEY = groqKey;
         }, theme, geminiKey, groqKey);
