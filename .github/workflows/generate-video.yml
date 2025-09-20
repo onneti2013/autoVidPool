@@ -38,6 +38,9 @@ jobs:
     - name: Generate video frames and compile
       env:
         THEME: ${{ github.event.inputs.theme || github.event.client_payload.theme || 'Curiosidades sobre o MAR' }}
+        ASPECT_RATIO: ${{ github.event.client_payload.aspect_ratio || '9:16' }}
+        DURATION_TYPE: ${{ github.event.client_payload.duration || 'curto' }}
+        LANGUAGE_VID: ${{ github.event.client_payload.language || 'portugues do Brazil' }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       run: |
