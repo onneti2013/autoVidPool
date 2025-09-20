@@ -155,14 +155,85 @@ class CapCutStyleGenerator {
     getTransitionEasing(type, t) { switch (type) { case 'explosiveZoomIn': case 'explosiveZoomOut': return this.easeOutExpo(t); case 'spiralBlur': case 'liquidMorph': return this.easeInOutBack(t); case 'shatterTransition': return this.easeOutBounce(t); default: return this.easeOutQuart(t); } }
 }
 
+// // ===================================================================================
+// // CLASSE: WordSubtitleAnimator (MODIFICADA PARA RENDERIZAÇÃO OFFLINE)
+// // ===================================================================================
+// class WordSubtitleAnimator {
+//     constructor() {
+//         this.app = null; this.container = null; this.wordElements = [];
+//         this.timeline = []; this.isInitialized = false;
+//         this.config = { fontSize: 48, fontFamily: 'Arial Black, sans-serif', fontWeight: 900, fillColor: 0xFFFFFF, strokeColor: 0x000000, strokeThickness: 4, dropShadowColor: 0x000000, dropShadowAlpha: 0.8, dropShadowDistance: 3, dropShadowBlur: 2, popScale: 1.2, popDuration: 0.15, fadeDuration: 0.1, maxWidth: 380, lineHeight: 1.2, bottomMargin: 120, wordsPerLine: 4 };
+//     }
+
+//     init(renderer) {
+//         if (!renderer || !renderer.app) throw new Error('Renderer inválido');
+//         this.app = renderer.app;
+//         this.setupContainer();
+//         this.isInitialized = true;
+//     }
+
+//     update(t) {
+//         if (!this.isInitialized || this.timeline.length === 0) return;
+//         let activeWord = this.timeline.find(wordData => t >= wordData.start && t < wordData.end);
+//         this.wordElements.forEach(element => {
+//             if (activeWord && element.wordData.start === activeWord.start) {
+//                 const timeIntoWord = t - activeWord.start;
+//                 const duration = 0.3; 
+//                 const progress = Math.min(timeIntoWord / duration, 1);
+//                 const easeOutBack = 1 - Math.pow(1 - progress, 3);
+//                 element.visible = true;
+//                 element.alpha = progress;
+//                 element.scale.set(1 + (easeOutBack * 0.1));
+//             } else {
+//                 element.visible = false;
+//             }
+//         });
+//     }
+
+//     setupContainer() { if (this.container) { this.app.stage.removeChild(this.container); } this.container = new PIXI.Container(); this.container.name = 'subtitles-container'; this.container.x = this.app.screen.width / 2; this.container.y = this.app.screen.height - this.config.bottomMargin; this.app.stage.addChild(this.container); }
+//     setTimeline(data) { this.timeline = []; let words = data.words || (Array.isArray(data) ? data.flatMap(s => s.words || []) : []); words.forEach(wordData => { if(wordData && wordData.word) this.timeline.push({ word: wordData.word.trim(), start: wordData.start, end: wordData.end, duration: wordData.end - wordData.start }); }); if (this.timeline.length > 0) { this.createWordElements(); } }
+//     createWordElements() { this.container.removeChildren(); this.wordElements = []; this.timeline.forEach((wordData, index) => { const textElement = this.createWordElement(wordData, index); this.container.addChild(textElement); this.wordElements.push(textElement); }); }
+//     createWordElement(wordData, index) { const textStyle = new PIXI.TextStyle({ fontFamily: this.config.fontFamily, fontSize: this.config.fontSize, fontWeight: this.config.fontWeight, fill: this.config.fillColor, stroke: this.config.strokeColor, strokeThickness: this.config.strokeThickness, dropShadow: true, dropShadowColor: this.config.dropShadowColor, dropShadowAlpha: this.config.dropShadowAlpha, dropShadowDistance: this.config.dropShadowDistance, dropShadowBlur: this.config.dropShadowBlur, wordWrap: false }); const textElement = new PIXI.Text(wordData.word, textStyle); textElement.anchor.set(0.5, 0.5); textElement.visible = false; textElement.wordData = wordData; textElement.wordIndex = index; return textElement; }
+//     destroy() { if (this.container && this.container.parent) { this.container.parent.removeChild(this.container); } this.wordElements = []; this.timeline = []; this.isInitialized = false; }
+// }
+
+
 // ===================================================================================
 // CLASSE: WordSubtitleAnimator (MODIFICADA PARA RENDERIZAÇÃO OFFLINE)
 // ===================================================================================
 class WordSubtitleAnimator {
     constructor() {
-        this.app = null; this.container = null; this.wordElements = [];
-        this.timeline = []; this.isInitialized = false;
-        this.config = { fontSize: 48, fontFamily: 'Arial Black, sans-serif', fontWeight: 900, fillColor: 0xFFFFFF, strokeColor: 0x000000, strokeThickness: 4, dropShadowColor: 0x000000, dropShadowAlpha: 0.8, dropShadowDistance: 3, dropShadowBlur: 2, popScale: 1.2, popDuration: 0.15, fadeDuration: 0.1, maxWidth: 380, lineHeight: 1.2, bottomMargin: 120, wordsPerLine: 4 };
+        this.app = null; 
+        this.container = null; 
+        this.wordElements = [];
+        this.timeline = []; 
+        this.isInitialized = false;
+        
+        // Array de cores disponíveis (incluindo branco)
+        this.availableColors = [0xFFFFFF, 0xd91ab3, 0x00ce05, 0xdcd317];
+        
+        // Seleciona uma cor aleatória para este vídeo
+        this.selectedColor = this.availableColors[Math.floor(Math.random() * this.availableColors.length)];
+        
+        this.config = { 
+            fontSize: 40, // Reduzido de 48 para 40
+            fontFamily: 'Arial Black, sans-serif', 
+            fontWeight: 900, 
+            fillColor: this.selectedColor, // Usa a cor selecionada aleatoriamente
+            strokeColor: 0x000000, 
+            strokeThickness: 4, 
+            dropShadowColor: 0x000000, 
+            dropShadowAlpha: 0.8, 
+            dropShadowDistance: 3, 
+            dropShadowBlur: 2, 
+            popScale: 1.2, 
+            popDuration: 0.15, 
+            fadeDuration: 0.1, 
+            maxWidth: 380, 
+            lineHeight: 1.2, 
+            bottomMargin: 120, 
+            wordsPerLine: 4 
+        };
     }
 
     init(renderer) {
@@ -190,11 +261,74 @@ class WordSubtitleAnimator {
         });
     }
 
-    setupContainer() { if (this.container) { this.app.stage.removeChild(this.container); } this.container = new PIXI.Container(); this.container.name = 'subtitles-container'; this.container.x = this.app.screen.width / 2; this.container.y = this.app.screen.height - this.config.bottomMargin; this.app.stage.addChild(this.container); }
-    setTimeline(data) { this.timeline = []; let words = data.words || (Array.isArray(data) ? data.flatMap(s => s.words || []) : []); words.forEach(wordData => { if(wordData && wordData.word) this.timeline.push({ word: wordData.word.trim(), start: wordData.start, end: wordData.end, duration: wordData.end - wordData.start }); }); if (this.timeline.length > 0) { this.createWordElements(); } }
-    createWordElements() { this.container.removeChildren(); this.wordElements = []; this.timeline.forEach((wordData, index) => { const textElement = this.createWordElement(wordData, index); this.container.addChild(textElement); this.wordElements.push(textElement); }); }
-    createWordElement(wordData, index) { const textStyle = new PIXI.TextStyle({ fontFamily: this.config.fontFamily, fontSize: this.config.fontSize, fontWeight: this.config.fontWeight, fill: this.config.fillColor, stroke: this.config.strokeColor, strokeThickness: this.config.strokeThickness, dropShadow: true, dropShadowColor: this.config.dropShadowColor, dropShadowAlpha: this.config.dropShadowAlpha, dropShadowDistance: this.config.dropShadowDistance, dropShadowBlur: this.config.dropShadowBlur, wordWrap: false }); const textElement = new PIXI.Text(wordData.word, textStyle); textElement.anchor.set(0.5, 0.5); textElement.visible = false; textElement.wordData = wordData; textElement.wordIndex = index; return textElement; }
-    destroy() { if (this.container && this.container.parent) { this.container.parent.removeChild(this.container); } this.wordElements = []; this.timeline = []; this.isInitialized = false; }
+    setupContainer() { 
+        if (this.container) { 
+            this.app.stage.removeChild(this.container); 
+        } 
+        this.container = new PIXI.Container(); 
+        this.container.name = 'subtitles-container'; 
+        this.container.x = this.app.screen.width / 2; 
+        this.container.y = this.app.screen.height - this.config.bottomMargin; 
+        this.app.stage.addChild(this.container); 
+    }
+
+    setTimeline(data) { 
+        this.timeline = []; 
+        let words = data.words || (Array.isArray(data) ? data.flatMap(s => s.words || []) : []); 
+        words.forEach(wordData => { 
+            if(wordData && wordData.word) this.timeline.push({ 
+                word: wordData.word.trim().toUpperCase(), // Converte para MAIÚSCULA
+                start: wordData.start, 
+                end: wordData.end, 
+                duration: wordData.end - wordData.start 
+            }); 
+        }); 
+        if (this.timeline.length > 0) { 
+            this.createWordElements(); 
+        } 
+    }
+
+    createWordElements() { 
+        this.container.removeChildren(); 
+        this.wordElements = []; 
+        this.timeline.forEach((wordData, index) => { 
+            const textElement = this.createWordElement(wordData, index); 
+            this.container.addChild(textElement); 
+            this.wordElements.push(textElement); 
+        }); 
+    }
+
+    createWordElement(wordData, index) { 
+        const textStyle = new PIXI.TextStyle({ 
+            fontFamily: this.config.fontFamily, 
+            fontSize: this.config.fontSize, 
+            fontWeight: this.config.fontWeight, 
+            fill: this.config.fillColor, 
+            stroke: this.config.strokeColor, 
+            strokeThickness: this.config.strokeThickness, 
+            dropShadow: true, 
+            dropShadowColor: this.config.dropShadowColor, 
+            dropShadowAlpha: this.config.dropShadowAlpha, 
+            dropShadowDistance: this.config.dropShadowDistance, 
+            dropShadowBlur: this.config.dropShadowBlur, 
+            wordWrap: false 
+        }); 
+        const textElement = new PIXI.Text(wordData.word, textStyle); 
+        textElement.anchor.set(0.5, 0.5); 
+        textElement.visible = false; 
+        textElement.wordData = wordData; 
+        textElement.wordIndex = index; 
+        return textElement; 
+    }
+
+    destroy() { 
+        if (this.container && this.container.parent) { 
+            this.container.parent.removeChild(this.container); 
+        } 
+        this.wordElements = []; 
+        this.timeline = []; 
+        this.isInitialized = false; 
+    }
 }
 
 // ===================================================================================
