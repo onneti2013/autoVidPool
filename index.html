@@ -268,9 +268,7 @@ async function generateAudio(text) {
         model: 'gemini-2.5-flash-preview-tts'
     };
     const result = await callGeminiApi(GEMINI_AUDIO_API_URL, payload);
-    const audioContent = getValidatedGeminiContent(result, "Gemini Audio");
-    const audioBase64 = audioContent.parts[0].inlineData.data;
-
+    const audioBase64 = result.candidates[0].content.parts[0].inlineData.data;
     const pcmData = new Int16Array(Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0)).buffer);
     const buffer = new ArrayBuffer(44 + pcmData.length * 2);
     const view = new DataView(buffer);
