@@ -9,11 +9,10 @@ let server;
 
 async function startServer() {
     const app = express();
-    // Serve todos os arquivos do diretório atual (index.html, etc)
     app.use(express.static(__dirname)); 
     
     return new Promise(resolve => {
-        server = app.listen(0, () => { // "0" encontra uma porta livre aleatória
+        server = app.listen(0, () => {
             console.log(`Servidor local iniciado na porta ${server.address().port}`);
             resolve(server.address().port);
         });
@@ -25,7 +24,7 @@ async function generateVideo(port) {
     const theme = process.env.THEME || 'Curiosidades sobre o MAR';
     const aspectRatio = process.env.ASPECT_RATIO || '9:16';
     const durationType = process.env.DURATION_TYPE || 'curto';
-    const language = process.env.LANGUAGE_VID || 'portugues do Brazil';
+    const language = process.env.LANGUAGE_VID || 'português do Brasil'; // Corrigido 'Brazil' para 'Brasil'
 
     const geminiKey = process.env.GEMINI_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
@@ -49,7 +48,9 @@ async function generateVideo(port) {
 
         await page.setViewport({ width: 1200, height: 800 });
 
-        await page.evaluateOnNewDocument((theme, geminiKey, groqKey) => {
+        // ================== CORREÇÃO APLICADA AQUI ==================
+        // Agora a função recebe TODAS as variáveis necessárias
+        await page.evaluateOnNewDocument((theme, aspectRatio, durationType, language, geminiKey, groqKey) => {
             window.THEME = theme;
             window.ASPECT_RATIO = aspectRatio;
             window.DURATION_TYPE = durationType;
@@ -57,7 +58,8 @@ async function generateVideo(port) {
             
             window.GEMINI_API_KEY = geminiKey;
             window.GROQ_API_KEY = groqKey;
-        }, theme, geminiKey, groqKey);
+        }, theme, aspectRatio, durationType, language, geminiKey, groqKey); // E TODAS são passadas aqui
+        // ==========================================================
 
         const pageUrl = `http://localhost:${port}/index.html`;
         console.log(`Navegando para ${pageUrl}`);
@@ -125,7 +127,6 @@ async function compileVideo() {
     console.log(`Vídeo final salvo em: ${outputPath}`);
 }
 
-// Fluxo principal
 async function main() {
     const port = await startServer();
     try {
