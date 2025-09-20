@@ -235,11 +235,23 @@ async function generateScript() {
     const DURATION_TYPE = window.DURATION_TYPE || 'curto';
     const LANGUAGE_VID = window.LANGUAGE_VID || 'português do Brasil';
     const durationPrompt = DURATION_TYPE === 'longo'
-        ? "longo e detalhado para um vídeo de aproximadamente 4 minutos, dividido em vários parágrafos."
-        : "curto e envolvente para um vídeo vertical, dividido em 3 parágrafos curtos.";
+        ? "longo e envolvente de no máximo 3 minutos para um vídeo horizontal"
+        : "curto e envolvente para um vídeo vertical, dividido em 3 parágrafos curtos";
     
-    const scriptPrompt = `Crie um roteiro de narração ${durationPrompt} em ${LANGUAGE_VID} sobre o tema: "${THEME}". O texto deve ser fluido e natural. Responda apenas com o texto do roteiro.`;
+    // const scriptPrompt = `Crie um roteiro de narração ${durationPrompt} em ${LANGUAGE_VID} sobre o tema: "${THEME}". O texto deve ser fluido e natural. Responda apenas com o texto do roteiro.`;
 
+    const scriptPrompt = `Crie APENAS o texto de narração ${durationPrompt} em ${LANGUAGE_VID} sobre o tema: "${THEME}". 
+
+    REGRAS OBRIGATÓRIAS:
+    - Escreva SOMENTE o que será falado pelo narrador
+    - NUNCA mencione: câmera, planos, cenas, cortes, fade, close-up ou qualquer termo técnico de vídeo
+    - NUNCA use direções como "imagine", "vemos", "a cena mostra"
+    - Use linguagem natural de storytelling, como se estivesse contando uma história
+    - Mantenha fluidez para narração em voz alta
+    - Estruture: introdução envolvente → desenvolvimento → conclusão marcante
+    
+    Responda apenas com o texto puro da narração.`;
+    
     const scriptPayload = { contents: [{ parts: [{ text: scriptPrompt }] }], generationConfig: { temperature: 0.7 } };
     const scriptResult = await callGeminiApi(GEMINI_TEXT_API_URL, scriptPayload);
     
