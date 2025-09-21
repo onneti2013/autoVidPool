@@ -557,7 +557,7 @@ async function initializeGenerator() {
 
         const audioDuration = transcriptionResult.duration;
         statusEl.textContent = 'Inicialização concluída. Pronto para renderizar.';
-        return { success: true, duration: audioDuration, audio: audioArray };
+        return { success: true, duration: audioDuration, audio: audioArray, script: scriptText };
 
     } catch (error) {
         console.error("Erro na inicialização:", error);
