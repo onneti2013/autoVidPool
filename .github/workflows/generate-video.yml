@@ -36,9 +36,11 @@ jobs:
           THEME: ${{ github.event.inputs.theme || github.event.client_payload.theme || 'Curiosidades sobre o MAR' }}
           ASPECT_RATIO: ${{ github.event.client_payload.aspect_ratio || '9:16' }}
           DURATION_TYPE: ${{ github.event.client_payload.duration || 'curto' }}
-          LANGUAGE_VID: ${{ github.event.client_payload.language || 'português do Brasil' }}
+          LANGUAGE_VID: ${{ github.event.client_payload.language || 'Brazilian Portuguese' }}
+          VOICE_NAME: ${{ github.event.client_payload.voice || 'Kore' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          AGENT_ID: ${{ github.event.client_payload.agent_id || '1' }}
         run: xvfb-run -a node puppeteer-script.js
       
       - name: Upload Artifacts (Video and Script)
