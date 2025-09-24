@@ -3,14 +3,57 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 
+
+async function sendErrorToWebhook(error, agentId) {
+    try {
+        const https = require('https');
+        const querystring = require('querystring');
+        
+        const postData = querystring.stringify({
+            'agent_id': agentId,
+            'error': error.toString()
+        });
+
+        const options = {
+            hostname: 'wg1.space',
+            path: '/autovidpool/retry.php',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(postData)
+            }
+        };
+
+        return new Promise((resolve, reject) => {
+            const req = https.request(options, (res) => {
+                console.log(`Webhook response status: ${res.statusCode}`);
+                resolve();
+            });
+
+            req.on('error', (e) => {
+                console.error('Erro ao enviar para webhook:', e.message);
+                resolve();
+            });
+
+            req.write(postData);
+            req.end();
+        });
+    } catch (webhookError) {
+        console.error('Erro na função sendErrorToWebhook:', webhookError.message);
+    }
+}
+
+
 async function generateVideo() {
     console.log('Iniciando geração de vídeo...');
     const theme = process.env.THEME || 'Curiosidades sobre o MAR';
     const aspectRatio = process.env.ASPECT_RATIO || '9:16';
     const durationType = process.env.DURATION_TYPE || 'curto';
-    const language = process.env.LANGUAGE_VID || 'português do Brasil';
+    const language = process.env.LANGUAGE_VID || 'Brazilian Portuguese';
+    const voice = process.env.VOICE_NAME || 'Kore';
     const geminiKey = process.env.GEMINI_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
+    const agent_id = process.env.AGENT_ID || '1';
 
     if (!geminiKey || !groqKey) {
         throw new Error('Chaves de API não encontradas nos secrets.');
@@ -30,14 +73,16 @@ async function generateVideo() {
         const page = await browser.newPage();
         page.on('console', msg => console.log('LOG DO NAVEGADOR:', msg.text()));
 
-        await page.evaluateOnNewDocument((theme, aspectRatio, durationType, language, geminiKey, groqKey) => {
+        await page.evaluateOnNewDocument((theme, aspectRatio, durationType, language, voice, geminiKey, groqKey, agent_id) => {
             window.THEME = theme;
             window.ASPECT_RATIO = aspectRatio;
             window.DURATION_TYPE = durationType;
             window.LANGUAGE_VID = language;
+            window.VOICE_NAME = voice;
             window.GEMINI_API_KEY = geminiKey;
             window.GROQ_API_KEY = groqKey;
-        }, theme, aspectRatio, durationType, language, geminiKey, groqKey);
+            window.AGENT_ID = agent_id;
+        }, theme, aspectRatio, durationType, language, voice, geminiKey, groqKey, agent_id);
 
         const htmlPath = path.join(__dirname, 'index.html');
         await page.goto(`file://${htmlPath}`, { waitUntil: 'networkidle0' });
@@ -107,12 +152,18 @@ async function compileVideo() {
 }
 
 async function main() {
+    const agent_id = process.env.AGENT_ID || '1';
+    
     try {
         await generateVideo();
         await compileVideo();
         console.log('Processo concluído com sucesso!');
     } catch (error) {
-        console.error('Erro fatal no processo:', error);
+        const errorMessage = `Erro fatal no processo: ${error}`;
+        console.error(errorMessage);
+        
+        await sendErrorToWebhook(error, agent_id);
+        
         process.exit(1);
     }
 }
