@@ -48,14 +48,57 @@ async function callGeminiApi(url, payload) {
     return response.json();
 }
 
+async function translateThemeToEnglish(theme) {
+    if (!theme || theme.trim() === '') {
+        throw new Error('THEME is empty or undefined');
+    }
+
+    const translationPrompt = `
+        Translate the following text to English. If it's already in English, return it exactly as is.
+        
+        CRITICAL RULES:
+        - Return ONLY the translated text
+        - No additional explanations or conversations
+        - No formatting or markdown
+        - No prefixes like "Here is the translation:" or similar
+        - Just the clean translated text
+        
+        Text to translate: "${theme}"
+    `;
+
+    try {
+        const translationPayload = {
+            contents: [{ parts: [{ text: translationPrompt }] }],
+            generationConfig: { 
+                temperature: 0.1,
+                maxOutputTokens: 100
+            }
+        };
+
+        const translationResult = await callGeminiApi(GEMINI_TEXT_API_URL, translationPayload);
+        const translationContent = getValidatedGeminiContent(translationResult, "Gemini Translation");
+        const translatedTheme = translationContent.parts[0].text.trim();
+
+        console.log(`🌐 THEME traduzido: "${theme}" → "${translatedTheme}"`);
+        return translatedTheme;
+        
+    } catch (error) {
+        console.error("Erro na tradução do THEME:", error);
+        console.warn("Usando THEME original devido ao erro na tradução");
+        return theme;
+    }
+}
+
 async function generateScript() {
     const DURATION_TYPE = window.DURATION_TYPE || 'curto';
-    const LANGUAGE_VID = window.LANGUAGE_VID || 'português do Brasil';
-    const THEME = window.THEME;
+    const LANGUAGE_VID = window.LANGUAGE_VID || 'Brazilian Portuguese';
+    let THEME = window.THEME;
+
+    THEME = await translateThemeToEnglish(THEME);
 
     const durationInstructions = DURATION_TYPE === 'longo'
         ? "a long and engaging narration script for a video of approximately 3 minutes, divided into several paragraphs"
-        : "a short and engaging narration script for a vertical video, divided into 3 short paragraphs";
+        : "a short and engaging narration script for a vertical video of maximum 60 seconds, divided into 3 short paragraphs";
 
     const scriptPrompt = `
         You are an expert content creator specialized in creating engaging narration scripts for short videos.
@@ -87,9 +130,9 @@ async function generateScript() {
         7. Structure with engaging opening, development, and memorable conclusion
 
         **Examples of intelligent adaptation:**
-        - "Desaparecimentos sem explicação" → Talk about real cases like Amelia Earhart, Flight MH370, Bermuda Triangle incidents
+        - "Unexplained disappearances" → Talk about real cases like Amelia Earhart, Flight MH370, Bermuda Triangle incidents
         - "Formigas" → Fascinating facts about ant behavior, strength, colony organization, specific species
-        - "Bitcoin" → Real price movements, adoption stories, specific use cases
+        - "Ants" → Real price movements, adoption stories, specific use cases
 
         Create an engaging script that intelligently matches the topic "${THEME}" in ${LANGUAGE_VID}.
     `;
@@ -137,12 +180,12 @@ async function generateScript() {
 
 async function generateAudio(text) {
     const payload = {
-        contents: [{ parts: [{ text: `Diga de forma natural e com pausas: ${text}` }] }],
+        contents: [{ parts: [{ text: `${text}` }] }],
         generationConfig: {
             responseModalities: ['AUDIO'],
             speechConfig: {
                 voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName: "Kore" }
+                    prebuiltVoiceConfig: { voiceName: window.VOICE_NAME || "Kore" }
                 }
             }
         },
