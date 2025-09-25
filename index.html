@@ -257,16 +257,60 @@ async function generateImagesForTimedChunks(timedChunks) {
             generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
         };
         
-        const imageResult = await callGeminiApi(GEMINI_IMAGE_API_URL, imagePayload);
-        const imageContent = getValidatedGeminiContent(imageResult, "Gemini Image Generation");
-        const imagePart = imageContent.parts.find(p => p.inlineData && p.inlineData.mimeType.startsWith("image/"));
-        if (!imagePart) { throw new Error(`API não retornou uma imagem para o prompt: "${imagePrompt}"`); }
-        const imageBase64 = imagePart.inlineData.data;
-        imageUrls.push(`data:image/png;base64,${imageBase64}`);
+        // const imageResult = await callGeminiApi(GEMINI_IMAGE_API_URL, imagePayload);
+        // const imageContent = getValidatedGeminiContent(imageResult, "Gemini Image Generation");
+        // const imagePart = imageContent.parts.find(p => p.inlineData && p.inlineData.mimeType.startsWith("image/"));
+        // if (!imagePart) { throw new Error(`API não retornou uma imagem para o prompt: "${imagePrompt}"`); }
+        // const imageBase64 = imagePart.inlineData.data;
+        // imageUrls.push(`data:image/png;base64,${imageBase64}`);
         
-        // --- Linhas Adicionadas ---
-        console.log(`Imagem ${i + 1}/${timedChunks.length} gerada. Pausando por 6.1 segundos para respeitar a cota.`);
-        await sleep(6100); // Pausa de 6.1 segundos
+        // // --- Linhas Adicionadas ---
+        // console.log(`Imagem ${i + 1}/${timedChunks.length} gerada. Pausando por 6.1 segundos para respeitar a cota.`);
+        // await sleep(6100); // Pausa de 6.1 segundos
+
+        // Sistema de 3 tentativas para cada imagem
+        let imageGenerated = false;
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        while (!imageGenerated && attempts < maxAttempts) {
+            attempts++;
+            try {
+                console.log(`Tentativa ${attempts}/${maxAttempts} para gerar imagem ${i + 1}/${timedChunks.length}`);
+                
+                const imageResult = await callGeminiApi(GEMINI_IMAGE_API_URL, imagePayload);
+                const imageContent = getValidatedGeminiContent(imageResult, "Gemini Image Generation");
+                const imagePart = imageContent.parts.find(p => p.inlineData && p.inlineData.mimeType.startsWith("image/"));
+                
+                if (imagePart) {
+                    const imageBase64 = imagePart.inlineData.data;
+                    imageUrls.push(`data:image/png;base64,${imageBase64}`);
+                    imageGenerated = true;
+                    console.log(`Imagem ${i + 1}/${timedChunks.length} gerada com sucesso na tentativa ${attempts}`);
+                } else {
+                    console.log(`Tentativa ${attempts} falhou - API não retornou imagem`);
+                }
+            } catch (error) {
+                console.log(`Tentativa ${attempts} falhou com erro:`, error.message);
+            }
+            
+            // Pausa de 6.1 segundos entre tentativas (para respeitar rate limit)
+            if (!imageGenerated && attempts < maxAttempts) {
+                console.log(`Aguardando 6.1 segundos antes da próxima tentativa...`);
+                await sleep(6100);
+            }
+        }
+        
+        // Se após 3 tentativas ainda não conseguiu gerar a imagem
+        if (!imageGenerated) {
+            throw new Error(`Falha ao gerar imagem após ${maxAttempts} tentativas para o prompt: "${imagePrompt}"`);
+        }
+
+        // Pausa entre imagens diferentes (apenas se não for a última imagem)
+        if (i < timedChunks.length - 1) {
+            console.log(`Pausando 6.1 segundos antes da próxima imagem...`);
+            await sleep(6100);
+        }
     }
     return imageUrls;
 }
